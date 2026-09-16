@@ -1,0 +1,6 @@
+{
+  "name": "LaunchProof",
+  "description": "Mobile-first SaaS for testing and checking products before real users do.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
