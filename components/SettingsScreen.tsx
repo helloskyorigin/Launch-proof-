@@ -71,7 +71,7 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
 
   const handleLogoutConfirm = () => {
     setActiveModal(null);
-    onNavigate('home');
+    onNavigate('landing');
   };
 
   return (

@@ -41,7 +41,7 @@ export function PricingScreen({ onNavigate, onSelectPlan }: PricingScreenProps) 
       {/* Page Intro */}
       <div className="mt-1 mb-5">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-          Pricing
+          Plans & Billing
         </h1>
         <p className="text-sm font-semibold text-slate-700 mt-1">
           Choose how you want to test

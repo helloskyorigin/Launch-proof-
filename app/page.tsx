@@ -11,11 +11,16 @@ import { SettingsScreen } from '@/components/SettingsScreen';
 import { HelpSupportScreen } from '@/components/HelpSupportScreen';
 import { NewCheckScreen } from '@/components/NewCheckScreen';
 import { PricingScreen } from '@/components/PricingScreen';
+import { LandingPage } from '@/components/LandingPage';
+import { AuthScreen } from '@/components/AuthScreen';
+import { OnboardingScreen } from '@/components/OnboardingScreen';
 import { GenericViewModal } from '@/components/GenericViewModal';
 
 export default function LaunchProofApp() {
-  // Navigation screen state: 'home' (default requested) | 'settings' | 'help' | 'reports' | 'check-history' | 'new-check' | 'pricing' | 'feedback'
-  const [currentScreen, setCurrentScreen] = useState<string>('home');
+  // Navigation screen state: 'landing' (default public marketing website) | 'auth' | 'onboarding' | 'home' | 'settings' | 'help' | 'reports' | 'check-history' | 'new-check' | 'pricing' | 'feedback'
+  const [currentScreen, setCurrentScreen] = useState<string>('landing');
+  const [authMode, setAuthMode] = useState<'check' | 'signin'>('check');
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string } | null>(null);
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [accountModalOpen, setAccountModalOpen] = useState<boolean>(false);
 
@@ -38,6 +43,56 @@ export default function LaunchProofApp() {
     setCurrentScreen('home');
   };
 
+  // 1. PUBLIC MARKETING LANDING PAGE (no dashboard chrome)
+  if (currentScreen === 'landing') {
+    return (
+      <LandingPage
+        onNavigateToAuth={(mode) => {
+          setAuthMode(mode);
+          setCurrentScreen('auth');
+        }}
+        onNavigateToOnboarding={() => {
+          setCurrentScreen('onboarding');
+        }}
+        onEnterApp={(url) => {
+          if (url) setInitialProductUrl(url);
+          setCurrentScreen(url ? 'new-check' : 'home');
+        }}
+      />
+    );
+  }
+
+  // 2. DEDICATED AUTHENTICATION SCREEN (no dashboard chrome)
+  if (currentScreen === 'auth') {
+    return (
+      <AuthScreen
+        initialMode={authMode}
+        onBackToLanding={() => setCurrentScreen('landing')}
+        onSuccess={(userType, email, name) => {
+          setCurrentUser({ email, name: name || 'Founder' });
+          if (userType === 'new') {
+            setCurrentScreen('onboarding');
+          } else {
+            setCurrentScreen('home');
+          }
+        }}
+      />
+    );
+  }
+
+  // 3. NEW USER ONBOARDING SCREEN (no dashboard chrome)
+  if (currentScreen === 'onboarding') {
+    return (
+      <OnboardingScreen
+        userName={currentUser?.name || 'Founder'}
+        userEmail={currentUser?.email || ''}
+        onComplete={() => {
+          setCurrentScreen('home');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen min-h-[100dvh] w-full bg-[#f8fafc] text-slate-900 flex flex-col items-center">
       {/* Main App Content Viewport (fluid & naturally scrollable) */}
@@ -46,9 +101,7 @@ export default function LaunchProofApp() {
         <Header
           onOpenDrawer={handleOpenDrawer}
           onOpenAccount={handleOpenAccount}
-          showThreeDots={currentScreen === 'home' || currentScreen === 'reports'}
           onNavigate={handleNavigate}
-          onResetChecks={checks.length > 0 ? handleResetToNewUserState : undefined}
           currentScreen={currentScreen}
         />
 
@@ -96,7 +149,6 @@ export default function LaunchProofApp() {
               onBack={() => setCurrentScreen('home')}
               onCheckCompleted={(newCheck) => {
                 setChecks((prev) => [newCheck, ...prev]);
-                setCurrentScreen('reports');
               }}
             />
           )}

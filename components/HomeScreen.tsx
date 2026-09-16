@@ -7,7 +7,6 @@ import {
   Plus,
   Image as ImageIcon,
   X,
-  Sun,
 } from 'lucide-react';
 
 interface HomeScreenProps {
@@ -23,6 +22,18 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // URL validation: requires domain format or localhost
+  const isUrlValid = (val: string): boolean => {
+    const trimmed = val.trim();
+    if (!trimmed) return false;
+    const domainPattern = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i;
+    const localhostPattern = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i;
+    return domainPattern.test(trimmed) || localhostPattern.test(trimmed);
+  };
+
+  const isReadyToSubmit =
+    inputMode === 'url' ? isUrlValid(url) : Boolean(screenshotPreview);
 
   const handleFileSelection = (file: File) => {
     if (!file || !file.type.startsWith('image/')) return;
@@ -73,43 +84,40 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
 
   const handleStartCheck = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isReadyToSubmit) return;
+
     if (inputMode === 'url') {
-      const targetUrl = url.trim() || 'https://yourproduct.com';
-      onStartCheck(targetUrl);
+      const targetUrl = url.trim();
+      onStartCheck(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
     } else {
       onStartCheck(screenshotName || 'Product Screenshot');
     }
   };
 
   return (
-    <div className="w-full px-5 pt-3 pb-24 flex flex-col animate-in fade-in duration-200 select-none">
-      {/* 1. HOME HERO (Retained exactly as requested) */}
-      <div className="mt-2 mb-6 sm:mb-7">
-        <div className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 tracking-wider uppercase mb-2.5">
-          <span>GOOD MORNING</span>
-          <Sun className="w-3.5 h-3.5 text-amber-500 stroke-[2.2]" aria-hidden="true" />
-        </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight leading-[1.15] mb-2">
-          Ready to test
-          <br />
-          your product?
+    <div className="w-full px-5 pt-1.5 pb-12 flex flex-col animate-in fade-in duration-200 select-none">
+      {/* 1. HERO SECTION */}
+      <div className="mt-0.5 mb-3.5 sm:mb-4 text-left">
+        <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-[1.2] mb-1.5 max-w-[290px] sm:max-w-none">
+          Know what your users
+          <br className="hidden xs:inline sm:hidden" /> will find.
         </h1>
-        <p className="text-slate-500 text-[15px] leading-relaxed font-normal">
-          Find issues before your real users do.
+        <p className="text-xs sm:text-sm text-slate-500 font-normal leading-relaxed max-w-[340px]">
+          Catch product, UX, trust, and technical issues before your first real users do.
         </p>
       </div>
 
-      {/* 2. THE NEW CHECK CARD (Primary visual focus with upgraded URL / Screenshot selector) */}
+      {/* 2. THE NEW CHECK CARD */}
       <div
         id="card-new-check-home"
-        className="w-full bg-white rounded-3xl p-5 sm:p-6 border border-slate-100 shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col transition-all"
+        className="w-full bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 shadow-[0_4px_24px_rgba(0,0,0,0.03)] flex flex-col transition-all"
       >
         {/* Card Header & Description */}
-        <div className="mb-4">
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight mb-1">
+        <div className="mb-3.5">
+          <h2 className="text-lg sm:text-xl font-bold text-slate-950 tracking-tight mb-1">
             New Check
           </h2>
-          <p className="text-slate-500 text-sm leading-relaxed font-normal">
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed font-normal">
             Test your product before your first real users do.
           </p>
         </div>
@@ -117,7 +125,7 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
         {/* Compact Two-Option Selector: [ URL ]  [ Screenshot ] */}
         <div
           id="selector-input-method"
-          className="w-full p-1 bg-slate-100/90 rounded-xl grid grid-cols-2 gap-1 mb-4"
+          className="w-full p-1 bg-slate-100/90 rounded-xl grid grid-cols-2 gap-1 mb-3.5"
         >
           <button
             type="button"
@@ -148,15 +156,15 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
         </div>
 
         {/* Form Container */}
-        <form onSubmit={handleStartCheck} className="space-y-4">
+        <form onSubmit={handleStartCheck} className="space-y-3.5">
           {/* A. URL MODE */}
           {inputMode === 'url' && (
             <div className="animate-in fade-in duration-150">
               <label
                 htmlFor="input-product-url"
-                className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-0.5"
+                className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5"
               >
-                Product URL
+                PRODUCT URL
               </label>
               <div className="relative w-full">
                 <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
@@ -171,7 +179,7 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
                   autoComplete="url"
                   autoCapitalize="none"
                   spellCheck="false"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50/70 border border-slate-200/90 rounded-2xl text-slate-900 placeholder:text-slate-400 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] focus:bg-white transition-all shadow-2xs"
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50/70 border border-slate-200/90 rounded-xl text-slate-900 placeholder:text-slate-400/90 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] focus:bg-white transition-all shadow-2xs"
                 />
               </div>
             </div>
@@ -180,8 +188,8 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
           {/* B. SCREENSHOT MODE */}
           {inputMode === 'screenshot' && (
             <div className="animate-in fade-in duration-150">
-              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-0.5">
-                Screenshot
+              <label className="block text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 px-0.5">
+                SCREENSHOT
               </label>
 
               {/* Hidden File Input */}
@@ -202,21 +210,21 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`w-full py-6 px-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
+                  className={`w-full py-5 px-4 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-center ${
                     isDragging
                       ? 'border-[#0066ff] bg-blue-50/50'
                       : 'border-slate-200/90 bg-slate-50/60 hover:bg-slate-50 hover:border-slate-300'
                   }`}
                 >
                   {/* Plus Icon container */}
-                  <div className="w-10 h-10 rounded-xl bg-[#ebf4ff] text-[#0066ff] flex items-center justify-center mb-2.5 shadow-2xs">
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
+                  <div className="w-9 h-9 rounded-xl bg-[#ebf4ff] text-[#0066ff] flex items-center justify-center mb-2 shadow-2xs">
+                    <Plus className="w-4.5 h-4.5 stroke-[2.5]" />
                   </div>
 
-                  <p className="text-sm font-semibold text-slate-800 tracking-tight mb-0.5">
+                  <p className="text-xs sm:text-sm font-semibold text-slate-800 tracking-tight mb-0.5">
                     Upload a screenshot
                   </p>
-                  <p className="text-xs text-slate-400 font-normal">
+                  <p className="text-[11px] text-slate-400 font-normal">
                     PNG, JPG up to 10MB
                   </p>
                 </div>
@@ -224,10 +232,10 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
                 /* Uploaded Preview State inside the upload area */
                 <div
                   id="preview-screenshot"
-                  className="w-full p-3 bg-slate-50/80 border border-slate-200/90 rounded-2xl flex items-center gap-3 relative"
+                  className="w-full p-3 bg-slate-50/80 border border-slate-200/90 rounded-xl flex items-center gap-3 relative"
                 >
                   {/* Image Thumbnail */}
-                  <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-200 border border-slate-100 flex-shrink-0 relative">
+                  <div className="w-13 h-13 rounded-lg overflow-hidden bg-slate-200 border border-slate-100 flex-shrink-0 relative">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={screenshotPreview}
@@ -267,15 +275,18 @@ export function HomeScreen({ onStartCheck }: HomeScreenProps) {
           <button
             id="btn-start-check-home"
             type="submit"
-            className="w-full py-3.5 px-6 bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold rounded-2xl flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(0,102,255,0.2)] transition-all cursor-pointer text-sm sm:text-[15px] group"
+            disabled={!isReadyToSubmit}
+            className={`w-full py-3.5 px-6 font-semibold rounded-xl flex items-center justify-center gap-2 transition-all text-xs sm:text-sm select-none ${
+              isReadyToSubmit
+                ? 'bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white shadow-[0_2px_12px_rgba(0,102,255,0.22)] cursor-pointer'
+                : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/60'
+            }`}
           >
             <span>Start a Check</span>
-            <ArrowRight className="w-4 h-4 stroke-[2.5] transition-transform duration-150 group-hover:translate-x-0.5" />
+            <ArrowRight className="w-4 h-4 stroke-[2.4]" />
           </button>
         </form>
       </div>
-
-      {/* Intentional whitespace below primary card */}
     </div>
   );
 }

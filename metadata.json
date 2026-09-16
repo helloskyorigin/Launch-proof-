@@ -1,6 +1,6 @@
 {
   "name": "LaunchProof",
-  "description": "Mobile-first SaaS for testing and checking products before real users do.",
+  "description": "Built it? Test it before your first users do. First-User Readiness Engine for indie hackers and product founders.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
