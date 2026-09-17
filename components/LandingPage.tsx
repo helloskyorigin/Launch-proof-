@@ -829,7 +829,7 @@ export function LandingPage({
 
                   <div className="text-[11px] text-slate-500 font-medium mb-6">
                     {billingCycle === 'monthly' ? (
-                      'Billed monthly • India ₹499 / month'
+                      'Billed monthly'
                     ) : (
                       <span className="text-emerald-700 font-semibold">$90 billed annually • Save $18</span>
                     )}

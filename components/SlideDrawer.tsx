@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   X,
   Home,
@@ -10,6 +10,10 @@ import {
   Settings,
   CircleHelp,
   FileText,
+  ChevronUp,
+  ChevronRight,
+  ArrowUpRight,
+  LogOut,
 } from 'lucide-react';
 import { Logo } from './Logo';
 
@@ -29,10 +33,18 @@ export function SlideDrawer({
   onClose,
   activeScreen,
   onNavigate,
-  onOpenAccount,
   userName = 'Satyam',
   userEmail = 'satyam@example.com',
 }: SlideDrawerProps) {
+  const [isAccountExpanded, setIsAccountExpanded] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  const handleClose = useCallback(() => {
+    setIsAccountExpanded(false);
+    setShowSignOutConfirm(false);
+    onClose();
+  }, [onClose]);
+
   // Prevent body scrolling when drawer is open
   useEffect(() => {
     if (isOpen) {
@@ -49,14 +61,19 @@ export function SlideDrawer({
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape' && isOpen) {
-        onClose();
+        if (showSignOutConfirm) {
+          setShowSignOutConfirm(false);
+        } else {
+          handleClose();
+        }
       }
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, showSignOutConfirm, handleClose]);
 
   const handleItemClick = (screenId: string) => {
+    setIsAccountExpanded(false);
     onNavigate(screenId);
     onClose();
   };
@@ -85,7 +102,7 @@ export function SlideDrawer({
       {/* Dark translucent backdrop */}
       <div
         id="drawer-backdrop"
-        onClick={onClose}
+        onClick={handleClose}
         className={`absolute inset-0 bg-slate-950/40 backdrop-blur-[2px] transition-opacity duration-300 ease-out ${
           isOpen ? 'opacity-100' : 'opacity-0'
         }`}
@@ -109,7 +126,7 @@ export function SlideDrawer({
             </div>
             <button
               id="btn-close-drawer"
-              onClick={onClose}
+              onClick={handleClose}
               aria-label="Close navigation"
               className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer -mt-1 -mr-2"
             >
@@ -203,34 +220,136 @@ export function SlideDrawer({
         </div>
 
         {/* 3. BOTTOM ACCOUNT AREA */}
-        <div className="p-4 border-t border-slate-100 bg-white pb-[max(1rem,env(safe-area-inset-bottom))] select-none">
+        <div className="border-t border-slate-100 bg-white p-3 sm:p-4 pb-[max(1rem,env(safe-area-inset-bottom))] select-none shrink-0">
+          {/* Collapsible Account Row (Trigger) */}
           <button
             id="drawer-bottom-account"
             type="button"
-            onClick={() => {
-              if (onOpenAccount) {
-                onOpenAccount();
-                onClose();
-              } else {
-                handleItemClick('settings');
-              }
-            }}
-            className="w-full min-h-[46px] flex items-center gap-3 p-2 -m-2 rounded-xl hover:bg-slate-50 active:scale-[0.99] transition-all cursor-pointer text-left group"
+            onClick={() => setIsAccountExpanded((prev) => !prev)}
+            aria-expanded={isAccountExpanded}
+            className="w-full min-h-[50px] flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 active:bg-slate-100/70 transition-all cursor-pointer text-left group"
           >
-            <div className="w-9 h-9 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-sm flex items-center justify-center flex-shrink-0 shadow-2xs">
-              {userName ? userName.charAt(0).toUpperCase() : 'S'}
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              <div className="w-9 h-9 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs">
+                {userName ? userName.charAt(0).toUpperCase() : 'S'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-[15px] sm:text-[16px] text-slate-900 truncate leading-snug">
+                  {userName}
+                </div>
+                <div className="text-xs text-slate-400 font-normal truncate mt-0.5">
+                  {userEmail}
+                </div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-semibold text-sm text-slate-900 truncate group-hover:text-[#0066ff] transition-colors">
-                {userName}
-              </div>
-              <div className="text-xs text-slate-400 font-normal truncate">
-                {userEmail}
-              </div>
+            <div className="pl-2 shrink-0">
+              <ChevronUp
+                className={`w-4 h-4 text-slate-400 stroke-[2.2] transition-transform duration-200 ease-out ${
+                  isAccountExpanded ? 'rotate-180' : ''
+                }`}
+              />
             </div>
           </button>
+
+          {/* Smoothly Expanded Account Menu (inside the sidebar) */}
+          <div
+            className={`transition-all duration-200 ease-out overflow-hidden ${
+              isAccountExpanded
+                ? 'max-h-60 opacity-100 pt-2 space-y-1'
+                : 'max-h-0 opacity-0 pointer-events-none'
+            }`}
+          >
+            <div className="border-t border-slate-100 my-1 mx-1" />
+
+            {/* Workspace Settings */}
+            <button
+              id="drawer-account-settings"
+              type="button"
+              onClick={() => handleItemClick('settings')}
+              className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 active:bg-slate-100/60 transition-colors cursor-pointer text-left group"
+            >
+              <div className="flex items-center gap-3 text-slate-700 group-hover:text-slate-900">
+                <Settings className="w-4.5 h-4.5 text-slate-400 group-hover:text-slate-600 stroke-[2]" />
+                <span className="text-[14px] sm:text-[15px] font-medium">Workspace Settings</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 stroke-[2]" />
+            </button>
+
+            {/* Upgrade to Pro */}
+            <button
+              id="drawer-account-upgrade"
+              type="button"
+              onClick={() => handleItemClick('pricing')}
+              className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/50 transition-colors cursor-pointer text-left group"
+            >
+              <div className="flex items-center gap-3 text-[#0066ff]">
+                <ArrowUpRight className="w-4.5 h-4.5 text-[#0066ff] stroke-[2.3]" />
+                <span className="text-[14px] sm:text-[15px] font-semibold">Upgrade to Pro</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-[#0066ff]/50 group-hover:text-[#0066ff] stroke-[2]" />
+            </button>
+
+            <div className="border-t border-slate-100 my-1 mx-1" />
+
+            {/* Sign Out */}
+            <button
+              id="drawer-account-signout"
+              type="button"
+              onClick={() => setShowSignOutConfirm(true)}
+              className="w-full min-h-[46px] flex items-center gap-3 px-3 py-2.5 rounded-xl text-rose-600 hover:bg-rose-50/70 active:bg-rose-100/60 transition-colors cursor-pointer text-left"
+            >
+              <LogOut className="w-4.5 h-4.5 text-rose-500 stroke-[2]" />
+              <span className="text-[14px] sm:text-[15px] font-medium">Sign Out</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Sign Out Confirmation Modal */}
+      {showSignOutConfirm && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setShowSignOutConfirm(false)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white w-full max-w-sm rounded-2xl p-5 border border-slate-200/90 shadow-xl space-y-4 animate-in zoom-in-95 duration-150"
+          >
+            <div className="text-center">
+              <h3 className="text-base sm:text-lg font-bold text-slate-950">
+                Log out of LaunchProof?
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">
+                You will need to sign in again to access your product checks and settings.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(false)}
+                className="py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer min-h-[44px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSignOutConfirm(false);
+                  setIsAccountExpanded(false);
+                  onClose();
+                  onNavigate('home');
+                }}
+                className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

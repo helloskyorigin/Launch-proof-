@@ -8,19 +8,25 @@ import {
   Image as ImageIcon,
   X,
   ArrowRight,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
+
+export interface SubmittedCheckData {
+  inputType: 'url' | 'screenshot';
+  url: string;
+  finalUrl?: string;
+  checkId?: string;
+  screenshotName?: string;
+  screenshotPreview?: string;
+  description: string;
+  productType: 'SaaS / Web App' | 'E-commerce' | 'AI Product' | 'Other';
+}
 
 export interface NewCheckInputProps {
   initialUrl?: string;
   onBack: () => void;
-  onSubmit: (data: {
-    inputType: 'url' | 'screenshot';
-    url: string;
-    screenshotName?: string;
-    screenshotPreview?: string;
-    description: string;
-    productType: 'SaaS / Web App' | 'E-commerce' | 'AI Product' | 'Other';
-  }) => void;
+  onSubmit: (data: SubmittedCheckData) => void;
 }
 
 export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInputProps) {
@@ -29,7 +35,11 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
   const [description, setDescription] = useState<string>('');
   const [productType, setProductType] = useState<'SaaS / Web App' | 'E-commerce' | 'AI Product' | 'Other'>('SaaS / Web App');
 
-  // Screenshot states
+  // Submission & Error states
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Screenshot states (retained visually for future phase)
   const [screenshotName, setScreenshotName] = useState<string>('');
   const [screenshotSize, setScreenshotSize] = useState<string>('');
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
@@ -43,13 +53,11 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
     'Other',
   ];
 
-  // URL validation: requires domain format or localhost
+  // URL input must be non-empty and have basic URL structure to enable button
   const isUrlValid = (val: string): boolean => {
     const trimmed = val.trim();
     if (!trimmed) return false;
-    const domainPattern = /^(https?:\/\/)?([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}(:\d+)?(\/.*)?$/i;
-    const localhostPattern = /^(https?:\/\/)?localhost(:\d+)?(\/.*)?$/i;
-    return domainPattern.test(trimmed) || localhostPattern.test(trimmed);
+    return trimmed.length >= 4 && !/\s/.test(trimmed);
   };
 
   const isScreenshotValid = Boolean(screenshotPreview || screenshotName);
@@ -78,29 +86,75 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isReady) return;
+    if (!isReady || isSubmitting) return;
 
-    onSubmit({
-      inputType,
-      url: inputType === 'url' ? (url.trim().startsWith('http') ? url.trim() : `https://${url.trim()}`) : '',
-      screenshotName: inputType === 'screenshot' ? (screenshotName || 'Product Screenshot') : undefined,
-      screenshotPreview: inputType === 'screenshot' ? (screenshotPreview || undefined) : undefined,
-      description: description.trim(),
-      productType,
-    });
+    if (inputType === 'screenshot') {
+      // Screenshot mode visual placeholder (Phase 1 focus is URL intake & backend validation)
+      onSubmit({
+        inputType: 'screenshot',
+        url: '',
+        screenshotName: screenshotName || 'Product Screenshot',
+        screenshotPreview: screenshotPreview || undefined,
+        description: description.trim(),
+        productType,
+      });
+      return;
+    }
+
+    // URL Mode: Real Backend Integration
+    const trimmedUrl = url.trim();
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      const response = await fetch('/api/checks/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: trimmedUrl,
+          description: description.trim() || undefined,
+          productType,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        const message = data?.error?.message || "We couldn't reach this website. Check the URL and try again.";
+        setErrorMessage(message);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Success: navigate with real check ID and verified URL
+      onSubmit({
+        inputType: 'url',
+        url: data.check.url,
+        finalUrl: data.check.finalUrl,
+        checkId: data.check.id,
+        description: description.trim(),
+        productType,
+      });
+    } catch {
+      setErrorMessage("We couldn't reach this website. Check the URL and try again.");
+      setIsSubmitting(false);
+    }
   };
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 sm:px-6 pt-1 pb-16 flex flex-col animate-in fade-in duration-200 select-none">
-      {/* 1. SUB-HEADER: Back on left, NEW CHECK on right (no 3-dot) */}
+      {/* 1. SUB-HEADER: Back on left, NEW CHECK on right */}
       <div className="flex items-center justify-between h-9 mb-3">
         <button
           id="btn-back-newcheck"
           type="button"
           onClick={onBack}
-          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-950 transition-colors py-1.5 px-2 -ml-2 rounded-lg hover:bg-slate-100/80 active:scale-95 cursor-pointer min-h-[44px]"
+          disabled={isSubmitting}
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-950 transition-colors py-1.5 px-2 -ml-2 rounded-lg hover:bg-slate-100/80 active:scale-95 cursor-pointer min-h-[44px] disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4 stroke-[2.3]" />
           <span>Back</span>
@@ -111,7 +165,7 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
         </span>
       </div>
 
-      {/* 2. HERO: Focused headline only (supporting sentence completely removed) */}
+      {/* 2. HERO */}
       <div className="mb-5 text-left">
         <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-[1.2]">
           Test your product before real users do.
@@ -131,7 +185,11 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
           <button
             id="tab-select-url"
             type="button"
-            onClick={() => setInputType('url')}
+            disabled={isSubmitting}
+            onClick={() => {
+              setInputType('url');
+              setErrorMessage(null);
+            }}
             className={`min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               inputType === 'url'
                 ? 'bg-white text-[#0066ff] shadow-xs'
@@ -144,7 +202,11 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
           <button
             id="tab-select-screenshot"
             type="button"
-            onClick={() => setInputType('screenshot')}
+            disabled={isSubmitting}
+            onClick={() => {
+              setInputType('screenshot');
+              setErrorMessage(null);
+            }}
             className={`min-h-[40px] py-2 px-3 rounded-lg text-xs font-bold tracking-wide transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
               inputType === 'screenshot'
                 ? 'bg-white text-[#0066ff] shadow-xs'
@@ -174,14 +236,33 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
                 id="input-newcheck-url"
                 type="text"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
+                disabled={isSubmitting}
+                onChange={(e) => {
+                  setUrl(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
                 placeholder="https://yourproduct.com"
                 autoComplete="url"
                 autoCapitalize="none"
                 spellCheck="false"
-                className="w-full pl-10 pr-4 py-3 min-h-[46px] bg-slate-50/70 border border-slate-200/90 rounded-xl text-slate-900 placeholder:text-slate-400/90 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] focus:bg-white transition-all shadow-2xs"
+                className={`w-full pl-10 pr-4 py-3 min-h-[46px] bg-slate-50/70 border rounded-xl text-slate-900 placeholder:text-slate-400/90 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:bg-white transition-all shadow-2xs ${
+                  errorMessage
+                    ? 'border-rose-400 focus:border-rose-500 focus:ring-rose-200'
+                    : 'border-slate-200/90 focus:border-[#0066ff] focus:ring-[#0066ff]/20'
+                }`}
               />
             </div>
+
+            {/* Inline Error Message */}
+            {errorMessage && (
+              <div
+                id="msg-url-error"
+                className="flex items-start gap-2 p-3 mt-1.5 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs animate-in fade-in slide-in-from-top-1 duration-150"
+              >
+                <AlertCircle className="w-4 h-4 stroke-[2.2] shrink-0 mt-0.5" />
+                <div className="flex-1 font-medium leading-relaxed">{errorMessage}</div>
+              </div>
+            )}
           </div>
         ) : (
           /* SCREENSHOT MODE */
@@ -302,6 +383,7 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
             id="input-product-description"
             type="text"
             value={description}
+            disabled={isSubmitting}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe it briefly"
             className="w-full px-4 py-3 min-h-[46px] bg-slate-50/70 border border-slate-200/90 rounded-xl text-slate-900 placeholder:text-slate-400/90 text-xs sm:text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#0066ff]/20 focus:border-[#0066ff] focus:bg-white transition-all shadow-2xs"
@@ -320,6 +402,7 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
                 <button
                   key={type}
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setProductType(type)}
                   className={`min-h-[44px] py-2.5 px-3 rounded-xl border text-xs font-semibold text-left transition-all cursor-pointer ${
                     isSelected
@@ -339,15 +422,24 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
           <button
             id="btn-start-check-input"
             type="submit"
-            disabled={!isReady}
+            disabled={!isReady || isSubmitting}
             className={`w-full py-3.5 px-6 min-h-[48px] font-semibold rounded-xl flex items-center justify-center gap-2 transition-all text-xs sm:text-sm select-none ${
-              isReady
+              isReady && !isSubmitting
                 ? 'bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white shadow-[0_2px_12px_rgba(0,102,255,0.22)] cursor-pointer'
                 : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200/60 shadow-none'
             }`}
           >
-            <span>Start Check</span>
-            <ArrowRight className="w-4 h-4 stroke-[2.4]" />
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin stroke-[2.4]" />
+                <span>Checking URL &amp; Reachability...</span>
+              </>
+            ) : (
+              <>
+                <span>Start Check</span>
+                <ArrowRight className="w-4 h-4 stroke-[2.4]" />
+              </>
+            )}
           </button>
         </div>
       </form>
