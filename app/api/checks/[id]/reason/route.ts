@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCheck, updateCheckStatus } from '@/lib/checks/check-store';
+import { getCheck, updateCheckStatus } from '@/lib/db/checks-repository';
 import { executeReasoning } from '@/lib/ai/reasoning';
+import { getAuthenticatedUser } from '@/lib/firebase/admin';
 
 export async function POST(
   req: NextRequest,
@@ -16,7 +17,10 @@ export async function POST(
       );
     }
 
-    const check = getCheck(id);
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser?.uid;
+
+    const check = await getCheck(id, userId);
     if (!check) {
       return NextResponse.json(
         { success: false, error: { code: 'CHECK_NOT_FOUND', message: 'Check not found.' } },
@@ -39,7 +43,7 @@ export async function POST(
     }
 
     // Update status to reasoning
-    updateCheckStatus(id, 'reasoning');
+    await updateCheckStatus(id, 'reasoning', undefined, userId);
     console.log(`[${id}] reasoning started`);
 
     const reasoningStart = Date.now();
@@ -49,19 +53,19 @@ export async function POST(
     console.log(`[${id}] reasoning finished in ${latency}ms with status: ${result.status}`);
 
     if (result.status === 'failed') {
-      updateCheckStatus(id, 'reasoning_failed', {
+      await updateCheckStatus(id, 'reasoning_failed', {
         reasoning: result,
-      });
+      }, userId);
       return NextResponse.json(
         { success: false, status: 'reasoning_failed', reasoning: result },
         { status: 500 }
       );
     }
 
-    updateCheckStatus(id, 'reasoning_complete', {
+    await updateCheckStatus(id, 'reasoning_complete', {
       findings: result.findings,
       reasoning: result,
-    });
+    }, userId);
 
     return NextResponse.json({
       success: true,

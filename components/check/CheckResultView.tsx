@@ -77,29 +77,38 @@ export function CheckResultView({
   // Normalize check record
   const record = (check || checkData || {}) as CheckRecord;
 
-  const score = record.score ?? 0;
-  const verdict = record.verdict ?? (score >= 80 ? 'Ready' : score >= 50 ? 'Needs Attention' : 'Not Ready');
+  const scoring = record.scoring;
+
+  const score = scoring ? scoring.overallScore : (record.score ?? 0);
+  const verdictRaw = scoring ? scoring.verdict : (record.verdict ?? (score >= 80 ? 'Ready' : score >= 50 ? 'Needs Attention' : 'Not Ready'));
+  const verdict = verdictRaw === 'READY' ? 'Ready' : (verdictRaw === 'NEEDS_ATTENTION' ? 'Needs Attention' : (verdictRaw === 'NOT_READY' ? 'Not Ready' : verdictRaw));
 
   const findings: Finding[] = record.findings || [];
   const blockers = findings.filter((f) => f.severity === 'blocker');
   const important = findings.filter((f) => f.severity === 'important');
   const minor = findings.filter((f) => f.severity === 'minor');
 
-  const blockerCount = record.blockerCount ?? blockers.length;
-  const importantCount = record.importantCount ?? important.length;
-  const minorCount = record.minorCount ?? minor.length;
+  const blockerCount = scoring ? scoring.counts.blockers : (record.blockerCount ?? blockers.length);
+  const importantCount = scoring ? scoring.counts.important : (record.importantCount ?? important.length);
+  const minorCount = scoring ? scoring.counts.minor : (record.minorCount ?? minor.length);
 
   const rawChecks = record.checks || [];
   const passedChecks = rawChecks.filter((c) => c.status === 'pass');
-  const passedCount = passedChecks.length;
+  const passedCount = scoring ? scoring.counts.passed : passedChecks.length;
 
-  const breakdown = record.breakdown || {
+  const breakdown = scoring ? {
+    productClarity: scoring.categoryScores['Product Clarity'],
+    userJourney: scoring.categoryScores['User Journey'],
+    mobile: scoring.categoryScores['Mobile'],
+    trust: scoring.categoryScores['Trust'],
+    technical: scoring.categoryScores['Technical']
+  } : (record.breakdown || {
     productClarity: 0,
     userJourney: 0,
     mobile: 0,
     trust: 0,
     technical: 0,
-  };
+  });
 
   const targetUrl = record.finalUrl || record.url || 'example.com';
   const cleanUrl = targetUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
@@ -126,28 +135,34 @@ export function CheckResultView({
     verdict === 'Ready' ? 'READY' : verdict === 'Needs Attention' ? 'NEEDS ATTENTION' : 'NOT READY';
 
   // Dynamic readiness description
-  let verdictSummary = 'Your product is ready for first users.';
-  if (verdict === 'Ready') {
-    if (minorCount > 0) {
-      verdictSummary = `Your product is ready for first users. ${minorCount} minor optimization${
-        minorCount === 1 ? '' : 's'
-      } found.`;
+  let verdictSummary = scoring ? scoring.summary : 'Your product is ready for first users.';
+  if (!scoring) {
+    if (verdict === 'Ready') {
+      if (minorCount > 0) {
+        verdictSummary = `Your product is ready for first users. ${minorCount} minor optimization${
+          minorCount === 1 ? '' : 's'
+        } found.`;
+      } else {
+        verdictSummary = 'Your product is ready for first users. No critical blockers detected.';
+      }
+    } else if (verdict === 'Needs Attention') {
+      const issueCount = blockerCount + importantCount;
+      verdictSummary = `A few issues should be fixed before inviting first users (${issueCount} issue${
+        issueCount === 1 ? '' : 's'
+      } need attention).`;
     } else {
-      verdictSummary = 'Your product is ready for first users. No critical blockers detected.';
+      verdictSummary = `Critical issues should be fixed before inviting first users (${
+        blockerCount > 0 ? `${blockerCount} critical blocker${blockerCount === 1 ? '' : 's'}` : 'issues detected'
+      }).`;
     }
-  } else if (verdict === 'Needs Attention') {
-    const issueCount = blockerCount + importantCount;
-    verdictSummary = `A few issues should be fixed before inviting first users (${issueCount} issue${
-      issueCount === 1 ? '' : 's'
-    } need attention).`;
-  } else {
-    verdictSummary = `Critical issues should be fixed before inviting first users (${
-      blockerCount > 0 ? `${blockerCount} critical blocker${blockerCount === 1 ? '' : 's'}` : 'issues detected'
-    }).`;
   }
 
   // Sorted findings for "WHAT TO FIX FIRST" (Top 1-3)
-  const sortedFindings = [...blockers, ...important, ...minor];
+  const rawFindings = [...blockers, ...important, ...minor];
+  const sortedFindings = scoring?.fixPlan 
+    ? (scoring.fixPlan.map(fp => rawFindings.find(r => r.id === fp.findingId)).filter(Boolean) as Finding[])
+    : rawFindings;
+    
   const topFixFirst = sortedFindings.slice(0, 3);
   const totalFixesCount = sortedFindings.length;
 
@@ -335,10 +350,15 @@ export function CheckResultView({
           id="btn-view-fix-plan-hero"
           type="button"
           onClick={onViewFixPlan}
-          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition-all cursor-pointer shrink-0"
+          disabled={totalFixesCount === 0}
+          className={`w-full sm:w-auto px-4 py-2.5 rounded-xl text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-2xs transition-all shrink-0 ${
+            totalFixesCount === 0 
+              ? 'bg-slate-300 cursor-not-allowed' 
+              : 'bg-[#0066ff] hover:bg-[#0055d4] cursor-pointer'
+          }`}
         >
-          <span>View Fix Plan</span>
-          <ArrowRight className="w-3.5 h-3.5 stroke-[2.4]" />
+          <span>{totalFixesCount === 0 ? 'No fixes needed' : 'View Fix Plan'}</span>
+          {totalFixesCount > 0 && <ArrowRight className="w-3.5 h-3.5 stroke-[2.4]" />}
         </button>
       </div>
 
@@ -570,10 +590,19 @@ export function CheckResultView({
           id="btn-bottom-fix-plan"
           type="button"
           onClick={onViewFixPlan}
-          className="w-full sm:flex-1 h-11 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs transition-all cursor-pointer"
+          disabled={totalFixesCount === 0}
+          className={`w-full sm:flex-1 h-11 rounded-xl active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-2xs transition-all ${
+            totalFixesCount === 0
+              ? 'bg-slate-300 cursor-not-allowed'
+              : 'bg-[#0066ff] hover:bg-[#0055d4] cursor-pointer'
+          }`}
         >
-          <span>View Fix Plan ({totalFixesCount} {totalFixesCount === 1 ? 'fix' : 'fixes'})</span>
-          <ArrowRight className="w-4 h-4 stroke-[2.3]" />
+          <span>
+            {totalFixesCount === 0
+              ? 'No fixes needed'
+              : `View Fix Plan (${totalFixesCount} ${totalFixesCount === 1 ? 'fix' : 'fixes'})`}
+          </span>
+          {totalFixesCount > 0 && <ArrowRight className="w-4 h-4 stroke-[2.3]" />}
         </button>
 
         {onStartRecheck && (

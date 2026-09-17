@@ -155,6 +155,37 @@ export interface CheckEvidence {
   mobile?: MobileEvidence;
 }
 
+export interface FixPlanItem {
+  rank: number;
+  findingId: string;
+  category: string;
+  severity: string;
+  title: string;
+  exactFix: string;
+  evidenceRefs: string[];
+}
+
+export interface FinalScoringResult {
+  status: 'complete' | 'failed';
+  overallScore: number;
+  verdict: 'READY' | 'NEEDS_ATTENTION' | 'NOT_READY';
+  categoryScores: {
+    'Product Clarity': number;
+    'User Journey': number;
+    'Mobile': number;
+    'Trust': number;
+    'Technical': number;
+  };
+  counts: {
+    blockers: number;
+    important: number;
+    minor: number;
+    passed: number;
+  };
+  summary: string;
+  fixPlan: FixPlanItem[];
+}
+
 export interface CheckRecord {
   id: string;
   url: string;
@@ -170,6 +201,7 @@ export interface CheckRecord {
   checks?: DeterministicCheckResult[];
   findings?: Finding[];
   reasoning?: ReasoningResult;
+  scoring?: FinalScoringResult;
   score?: number;
   verdict?: ReadinessVerdict;
   breakdown?: ScoreBreakdown;
@@ -197,6 +229,11 @@ export function saveCheck(check: CheckRecord): CheckRecord {
     updatedAt: new Date().toISOString(),
   };
   checksStore.set(check.id, checkWithTimestamp);
+  
+  import('@/lib/db/checks-repository').then(({ saveCheck: dbSave }) => {
+    dbSave(checkWithTimestamp).catch(e => console.error('Background save failed:', e));
+  }).catch(() => {});
+  
   return checkWithTimestamp;
 }
 
@@ -206,8 +243,12 @@ export function updateCheckStatus(
   partial?: Partial<CheckRecord>
 ): CheckRecord | undefined {
   const existing = checksStore.get(id);
-  if (!existing) return undefined;
-
+  if (!existing) {
+     import('@/lib/db/checks-repository').then(({ updateCheckStatus: dbUpdate }) => {
+       dbUpdate(id, status, partial).catch(e => console.error('Background update failed:', e));
+     }).catch(() => {});
+     return undefined;
+  }
   const updated: CheckRecord = {
     ...existing,
     ...partial,
@@ -215,19 +256,41 @@ export function updateCheckStatus(
     updatedAt: new Date().toISOString(),
   };
   checksStore.set(id, updated);
+  
+  import('@/lib/db/checks-repository').then(({ updateCheckStatus: dbUpdate }) => {
+    dbUpdate(id, status, partial).catch(e => console.error('Background update failed:', e));
+  }).catch(() => {});
+  
   return updated;
 }
 
 export function getCheck(id: string): CheckRecord | undefined {
+  import('@/lib/db/checks-repository').then(({ getCheck: dbGet }) => {
+    dbGet(id).then(dbCheck => {
+      if (dbCheck) checksStore.set(id, dbCheck);
+    }).catch(e => console.error('Background fetch failed:', e));
+  }).catch(() => {});
+  
   return checksStore.get(id);
 }
 
 export function getAllChecks(): CheckRecord[] {
+  // Try to sync with DB if possible
+  import('@/lib/db/checks-repository').then(({ getAllChecks: dbGetAll }) => {
+    dbGetAll().then(dbChecks => {
+      dbChecks.forEach(c => checksStore.set(c.id, c));
+    }).catch(e => console.error('Background fetch all failed:', e));
+  }).catch(() => {});
+  
   return Array.from(checksStore.values()).sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 }
 
 export function deleteCheck(id: string): boolean {
+  import('@/lib/db/checks-repository').then(({ deleteCheck: dbDelete }) => {
+    dbDelete(id).catch(e => console.error('Background delete failed:', e));
+  }).catch(() => {});
+  
   return checksStore.delete(id);
 }

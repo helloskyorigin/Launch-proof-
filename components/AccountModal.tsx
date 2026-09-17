@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { X, User, Settings, Shield, LogOut, ChevronRight, Check } from 'lucide-react';
+import { useAuth } from '@/lib/firebase/context';
 
 interface AccountModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface AccountModalProps {
 
 export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
+  const { user, profile, signOut } = useAuth();
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -31,6 +33,21 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+
+  const displayName = user?.displayName || profile?.name || user?.email?.split('@')[0] || 'Founder';
+  const displayEmail = user?.email || profile?.email || 'founder@launchproof.com';
+  const initial = displayName.charAt(0).toUpperCase() || 'F';
+  const planName = profile?.plan === 'pro' ? 'Pro Plan' : profile?.plan === 'pro_plus' ? 'Pro Plus Plan' : 'Free Starter Plan';
+
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Sign out error:', err);
+    }
+    onClose();
+    onNavigate('landing');
+  };
 
   return (
     <div
@@ -61,15 +78,15 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
 
         {/* User Card */}
         <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-lg flex items-center justify-center border border-blue-100">
-            S
+          <div className="w-12 h-12 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-lg flex items-center justify-center border border-blue-100 shrink-0">
+            {initial}
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-sm font-bold text-slate-900">Satyam</h4>
-            <p className="text-xs text-slate-500 font-mono">satyam@example.com</p>
+            <h4 className="text-sm font-bold text-slate-900 truncate">{displayName}</h4>
+            <p className="text-xs text-slate-500 font-mono truncate">{displayEmail}</p>
             <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-1">
               <Check className="w-3 h-3" />
-              <span>Free Starter Plan</span>
+              <span>{planName}</span>
             </div>
           </div>
         </div>
@@ -109,10 +126,7 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
 
         {/* Sign Out Action */}
         <button
-          onClick={() => {
-            onClose();
-            onNavigate('home');
-          }}
+          onClick={handleSignOut}
           className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <LogOut className="w-4 h-4" />

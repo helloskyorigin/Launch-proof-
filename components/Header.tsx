@@ -3,6 +3,7 @@
 import React from 'react';
 import { Menu } from 'lucide-react';
 import { Logo } from './Logo';
+import { useAuth } from '@/lib/firebase/context';
 
 interface HeaderProps {
   onOpenDrawer: () => void;
@@ -16,6 +17,10 @@ export function Header({
   onOpenAccount,
   onNavigate,
 }: HeaderProps) {
+  const { user, profile } = useAuth();
+  const displayName = user?.displayName || profile?.name || user?.email || 'Founder';
+  const initial = displayName.charAt(0).toUpperCase() || 'F';
+
   return (
     <header className="relative w-full flex items-center justify-between px-5 pt-3.5 pb-2.5 z-30 select-none">
       {/* Left: Hamburger menu */}
@@ -55,7 +60,7 @@ export function Header({
           aria-label="User profile & account"
           className="w-9 h-9 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-xs sm:text-sm flex items-center justify-center border border-blue-100/60 hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-2xs"
         >
-          S
+          {initial}
         </button>
       </div>
     </header>

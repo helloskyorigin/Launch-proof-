@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCheck } from '@/lib/checks/store';
+import { getCheck } from '@/lib/db/checks-repository';
+import { getAuthenticatedUser } from '@/lib/firebase/admin';
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await context.params;
-    const check = getCheck(id);
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser?.uid;
+
+    const check = await getCheck(id, userId);
 
     if (!check) {
       return NextResponse.json(
@@ -38,7 +42,8 @@ export async function GET(
       },
       { status: 200 }
     );
-  } catch {
+  } catch (err) {
+    console.error('Error in GET /api/checks/[id]:', err);
     return NextResponse.json(
       {
         success: false,

@@ -31,17 +31,30 @@ export default function CheckDetailPage() {
   const [accountModalOpen, setAccountModalOpen] = useState(false);
 
   // Derive fix plan items from real findings
-  const syncFixPlan = (findings: Finding[]) => {
-    const tasks: FixPlanItem[] = (findings || []).map((f, index) => ({
-      id: `fix_${f.id}`,
-      number: index + 1 < 10 ? `0${index + 1}` : `${index + 1}`,
-      priority: (f.severity === 'blocker' ? 'Critical' : 'Important') as 'Critical' | 'Important',
-      category: f.category,
-      title: f.title,
-      description: f.fix,
-      completed: false,
-    }));
-    setFixPlanTasks(tasks);
+  const syncFixPlan = (record: CheckRecord) => {
+    if (record.scoring?.fixPlan) {
+      const tasks: FixPlanItem[] = record.scoring.fixPlan.map((f, index) => ({
+        id: `fix_${f.findingId}`,
+        number: index + 1 < 10 ? `0${index + 1}` : `${index + 1}`,
+        priority: (f.severity === 'blocker' ? 'Critical' : 'Important') as 'Critical' | 'Important',
+        category: f.category,
+        title: f.title,
+        description: f.exactFix,
+        completed: false,
+      }));
+      setFixPlanTasks(tasks);
+    } else {
+      const tasks: FixPlanItem[] = (record.findings || []).map((f, index) => ({
+        id: `fix_${f.id}`,
+        number: index + 1 < 10 ? `0${index + 1}` : `${index + 1}`,
+        priority: (f.severity === 'blocker' ? 'Critical' : 'Important') as 'Critical' | 'Important',
+        category: f.category,
+        title: f.title,
+        description: f.fix,
+        completed: false,
+      }));
+      setFixPlanTasks(tasks);
+    }
   };
 
   useEffect(() => {
@@ -58,9 +71,9 @@ export default function CheckDetailPage() {
         if (res.ok && data.success && data.check) {
           const record: CheckRecord = data.check;
           setCheck(record);
-          syncFixPlan(record.findings || []);
+          syncFixPlan(record);
 
-          if (record.status === 'completed' || record.status === 'reasoning_complete') {
+          if (record.status === 'completed') {
             setStage('result');
           } else {
             setStage('checking');
@@ -85,7 +98,7 @@ export default function CheckDetailPage() {
 
   const handleCheckingComplete = (completedCheck: CheckRecord) => {
     setCheck(completedCheck);
-    syncFixPlan(completedCheck.findings || []);
+    syncFixPlan(completedCheck);
     if (completedCheck.findings && completedCheck.findings.length > 0) {
       setSelectedFinding(completedCheck.findings[0]);
     }
@@ -121,9 +134,23 @@ export default function CheckDetailPage() {
   };
 
   const handleRunRecheck = async () => {
-    if (check?.id) {
+    if (check) {
       try {
-        await fetch(`/api/checks/${check.id}/run`, { method: 'POST' });
+        const res = await fetch('/api/checks/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url: check.url,
+            description: check.description || '',
+            productType: check.productType || '',
+            parentCheckId: check.id,
+          }),
+        });
+        const data = await res.json();
+        if (data.success && data.check) {
+          router.push(`/check/${data.check.id}`);
+          return;
+        }
       } catch (err) {
         console.error('Failed to trigger re-check:', err);
       }

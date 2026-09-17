@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { validateProductUrl } from '@/lib/checks/url-validation';
 import { checkUrlReachability } from '@/lib/checks/reachability';
 import { createCheckId } from '@/lib/checks/check-id';
-import { saveCheck } from '@/lib/checks/store';
+import { saveCheck } from '@/lib/db/checks-repository';
+import { getAuthenticatedUser } from '@/lib/firebase/admin';
+import { isFirebaseConfigured } from '@/lib/firebase/client';
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,9 +24,29 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { url, description, productType } = body || {};
+    const { url, description, productType, parentCheckId } = body || {};
 
-    // 1. URL Validation & SSRF Check
+    // 1. Verify User Authentication Server-Side (STEP 14)
+    let userId = 'anonymous';
+    const authUser = await getAuthenticatedUser(req);
+
+    if (authUser) {
+      userId = authUser.uid;
+    } else if (isFirebaseConfigured()) {
+      // If Firebase is configured, require authentication
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'Authentication required. Please sign in to launch a check.',
+          },
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. URL Validation & SSRF Check
     const validation = validateProductUrl(url);
     if (!validation.isValid) {
       return NextResponse.json(
@@ -36,7 +58,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Real Server-Side Website Reachability Check
+    // 3. Real Server-Side Website Reachability Check
     const reachability = await checkUrlReachability(validation.normalizedUrl);
     if (!reachability.isReachable) {
       const httpStatus = reachability.error.code === 'REQUEST_TIMEOUT' ? 504 : 400;
@@ -49,21 +71,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 3. Generate Check ID and store in-memory
+    // 4. Generate Check ID and store under authenticated user
     const checkId = createCheckId();
-    const checkRecord = saveCheck({
-      id: checkId,
-      url: validation.normalizedUrl,
-      finalUrl: reachability.finalUrl,
-      status: 'ready_for_analysis',
-      productType: productType || 'SaaS / Web App',
-      description: typeof description === 'string' ? description.trim() : '',
-      createdAt: new Date().toISOString(),
-      responseTimeMs: reachability.responseTimeMs,
-      httpStatus: reachability.statusCode,
-    });
+    const checkRecord = await saveCheck(
+      {
+        id: checkId,
+        url: validation.normalizedUrl,
+        finalUrl: reachability.finalUrl,
+        status: 'ready_for_analysis',
+        productType: productType || 'SaaS / Web App',
+        description: typeof description === 'string' ? description.trim() : '',
+        createdAt: new Date().toISOString(),
+        responseTimeMs: reachability.responseTimeMs,
+        httpStatus: reachability.statusCode,
+      },
+      userId,
+      parentCheckId
+    );
 
-    // 4. Return success response
+    // 5. Return success response
     return NextResponse.json(
       {
         success: true,

@@ -1,0 +1,25 @@
+}
+
+export function updateCheckStatus(
+  id: string,
+  status: CheckStatus,
+  partial?: Partial<CheckRecord>
+): CheckRecord | undefined {
+  const existing = checksStore.get(id);
+  if (!existing) return undefined;
+
+  const updated: CheckRecord = {
+    ...existing,
+    ...partial,
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  checksStore.set(id, updated);
+  return updated;
+}
+
+export function getCheck(id: string): CheckRecord | undefined {
+  return checksStore.get(id);
+}
+
+export function getAllChecks(): CheckRecord[] {

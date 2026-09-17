@@ -82,7 +82,13 @@ export function CheckingProgress({
               fetch(`/api/checks/${checkId}/reason`, { method: 'POST' }).catch(() => {});
             }
 
-            if (check.status === 'completed' || check.status === 'reasoning_complete') {
+            if (check.status === 'reasoning_complete') {
+              // Trigger scoring Phase 5 automatically from UI
+              if (!isMounted) return;
+              fetch(`/api/checks/${checkId}/score`, { method: 'POST' }).catch(() => {});
+            }
+
+            if (check.status === 'completed') {
               if (onComplete) {
                 onComplete(check);
               }
@@ -140,7 +146,12 @@ export function CheckingProgress({
               fetch(`/api/checks/${checkId}/reason`, { method: 'POST' }).catch(() => {});
             }
 
-            if (data.check.status === 'completed' || data.check.status === 'reasoning_complete') {
+            if (data.check.status === 'reasoning_complete') {
+              if (!isMounted) return;
+              fetch(`/api/checks/${checkId}/score`, { method: 'POST' }).catch(() => {});
+            }
+
+            if (data.check.status === 'completed') {
               setIsRetrying(false);
               if (onComplete) onComplete(data.check);
               return;

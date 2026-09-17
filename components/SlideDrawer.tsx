@@ -16,6 +16,7 @@ import {
   LogOut,
 } from 'lucide-react';
 import { Logo } from './Logo';
+import { useAuth } from '@/lib/firebase/context';
 
 interface SlideDrawerProps {
   isOpen: boolean;
@@ -33,9 +34,13 @@ export function SlideDrawer({
   onClose,
   activeScreen,
   onNavigate,
-  userName = 'Satyam',
-  userEmail = 'satyam@example.com',
+  userName: propsUserName,
+  userEmail: propsUserEmail,
 }: SlideDrawerProps) {
+  const { user, profile, signOut } = useAuth();
+  const userName = user?.displayName || profile?.name || propsUserName || user?.email?.split('@')[0] || 'Founder';
+  const userEmail = user?.email || profile?.email || propsUserEmail || 'founder@launchproof.com';
+
   const [isAccountExpanded, setIsAccountExpanded] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
@@ -336,11 +341,16 @@ export function SlideDrawer({
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setShowSignOutConfirm(false);
                   setIsAccountExpanded(false);
                   onClose();
-                  onNavigate('home');
+                  try {
+                    await signOut();
+                  } catch (err) {
+                    console.error('Sign out error:', err);
+                  }
+                  onNavigate('landing');
                 }}
                 className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
               >

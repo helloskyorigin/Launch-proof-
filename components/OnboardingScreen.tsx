@@ -2,6 +2,7 @@
 
 import React, { useState, useRef } from 'react';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { useAuth } from '@/lib/firebase/context';
 
 interface OnboardingScreenProps {
   userName?: string;
@@ -12,6 +13,7 @@ interface OnboardingScreenProps {
 export function OnboardingScreen({
   onComplete,
 }: OnboardingScreenProps) {
+  const { completeOnboarding } = useAuth();
   // Step state: 1 | 2 | 3
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [isNavigating, setIsNavigating] = useState(false);
@@ -83,10 +85,21 @@ export function OnboardingScreen({
   };
 
   // Screen 3 Continue click: transitions to workspace setup/loading state, then to Home
-  const handleContinueScreen3 = () => {
+  const handleContinueScreen3 = async () => {
     if (!focusArea || isNavigating || isSettingUp) return;
     setIsNavigating(true);
     setIsSettingUp(true);
+
+    try {
+      await completeOnboarding({
+        buildingType: buildingType || undefined,
+        productStage: productStage || undefined,
+        focusArea: focusArea || undefined,
+        skipped: false,
+      });
+    } catch (err) {
+      console.error('Failed to save onboarding:', err);
+    }
 
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = setTimeout(() => {
@@ -96,8 +109,13 @@ export function OnboardingScreen({
   };
 
   // Skip handler: immediately exits onboarding and navigates to Home
-  const handleSkip = () => {
+  const handleSkip = async () => {
     if (isSettingUp) return;
+    try {
+      await completeOnboarding({ skipped: true });
+    } catch (err) {
+      console.error('Failed to skip onboarding:', err);
+    }
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     onComplete();
   };

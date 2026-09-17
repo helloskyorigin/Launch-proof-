@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCheck } from '@/lib/checks/check-store';
+import { getCheck } from '@/lib/db/checks-repository';
 import { executeCheckRun } from '@/lib/checks/check-runner';
+import { getAuthenticatedUser } from '@/lib/firebase/admin';
 
 export async function POST(
   req: NextRequest,
@@ -15,7 +16,10 @@ export async function POST(
       );
     }
 
-    const check = getCheck(id);
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser?.uid;
+
+    const check = await getCheck(id, userId);
     if (!check) {
       return NextResponse.json(
         { success: false, error: { code: 'CHECK_NOT_FOUND', message: 'Check not found.' } },
@@ -23,8 +27,7 @@ export async function POST(
       );
     }
 
-    // Trigger Playwright evidence collection run asynchronously or synchronously
-    // Start the run in background to allow client polling
+    // Trigger Playwright evidence collection run asynchronously
     executeCheckRun(id).catch((err) => {
       console.error(`[api/checks/${id}/run] Uncaught runner error:`, err);
     });

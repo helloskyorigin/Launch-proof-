@@ -11,6 +11,8 @@ import {
   KeyRound,
   ExternalLink,
 } from 'lucide-react';
+import { useAuth } from '@/lib/firebase/context';
+import { updateUserProfile } from '@/lib/firebase/firestore';
 
 interface SettingsScreenProps {
   onNavigate: (screen: string) => void;
@@ -19,14 +21,30 @@ interface SettingsScreenProps {
 type SubScreen = 'main' | 'profile' | 'security' | 'appearance' | 'feedback' | 'help_sub';
 
 export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const [activeSubScreen, setActiveSubScreen] = useState<SubScreen>('main');
 
   // User Profile state
-  const [userName, setUserName] = useState('Satyam');
-  const [userEmail, setUserEmail] = useState('satyam@example.com');
+  const initialName = user?.displayName || profile?.name || user?.email?.split('@')[0] || 'Founder';
+  const initialEmail = user?.email || profile?.email || 'founder@launchproof.com';
+
+  const [userName, setUserName] = useState(initialName);
+  const [userEmail, setUserEmail] = useState(initialEmail);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [tempName, setTempName] = useState(userName);
-  const [tempEmail, setTempEmail] = useState(userEmail);
+  const [tempName, setTempName] = useState(initialName);
+  const [tempEmail, setTempEmail] = useState(initialEmail);
+
+  // Sync when profile loads
+  React.useEffect(() => {
+    if (user || profile) {
+      const name = user?.displayName || profile?.name || user?.email?.split('@')[0] || 'Founder';
+      const email = user?.email || profile?.email || 'founder@launchproof.com';
+      setUserName(name);
+      setUserEmail(email);
+      setTempName(name);
+      setTempEmail(email);
+    }
+  }, [user, profile]);
 
   // Preferences
   const [appearance, setAppearance] = useState<'Light' | 'Dark' | 'System'>('System');
@@ -47,11 +65,20 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setUserName(tempName.trim() || 'Satyam');
-    setUserEmail(tempEmail.trim() || 'satyam@example.com');
+    const updatedName = tempName.trim() || 'Founder';
+    setUserName(updatedName);
     setIsEditingProfile(false);
+
+    if (user?.uid) {
+      try {
+        await updateUserProfile(user.uid, { name: updatedName });
+        await refreshProfile();
+      } catch (err) {
+        console.error('Failed to update profile in Firestore:', err);
+      }
+    }
     showToast('Profile updated');
   };
 
@@ -584,10 +611,15 @@ export function SettingsScreen({ onNavigate }: SettingsScreenProps) {
               </button>
               <button
                 type="button"
-                onClick={() => {
+                onClick={async () => {
                   setShowLogoutConfirm(false);
                   showToast('Logged out of LaunchProof');
-                  onNavigate('home');
+                  try {
+                    await signOut();
+                  } catch (err) {
+                    console.error('Sign out error:', err);
+                  }
+                  onNavigate('landing');
                 }}
                 className="py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold transition-colors cursor-pointer min-h-[44px]"
               >

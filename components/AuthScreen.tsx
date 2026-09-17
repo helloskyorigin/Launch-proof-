@@ -9,7 +9,12 @@ import {
   FileText,
   Shield,
   HelpCircle,
+  Lock,
+  Mail,
+  KeyRound,
 } from 'lucide-react';
+import { useAuth } from '@/lib/firebase/context';
+import { getFriendlyAuthErrorMessage } from '@/lib/firebase/auth';
 
 interface AuthScreenProps {
   initialMode?: 'check' | 'signin';
@@ -22,7 +27,20 @@ export function AuthScreen({
   onSuccess,
   onBackToLanding,
 }: AuthScreenProps) {
+  const {
+    signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    isConfigured,
+    missingConfig,
+    profile,
+  } = useAuth();
+
+  const [authType, setAuthType] = useState<'signin' | 'signup'>(
+    initialMode === 'signin' ? 'signin' : 'signup'
+  );
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,62 +48,74 @@ export function AuthScreen({
   // Legal & Support modals
   const [activeModal, setActiveModal] = useState<'terms' | 'privacy' | 'support' | null>(null);
 
-  // Known returning emails for seamless production-like simulation
-  const knownReturningEmails = ['satyam@example.com', 'founder@launchproof.com', 'test@example.com'];
-
   const validateEmail = (val: string) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val.trim());
   };
 
-  const handleEmailSubmit = (e: React.FormEvent) => {
+  const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
 
-    const trimmed = email.trim();
+    if (!isConfigured) {
+      setErrorMessage(`Missing Firebase configuration: ${missingConfig.join(', ')}`);
+      return;
+    }
 
-    if (!trimmed) {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
       setErrorMessage('Please enter your email address.');
       return;
     }
 
-    if (!validateEmail(trimmed)) {
+    if (!validateEmail(trimmedEmail)) {
       setErrorMessage('Please enter a valid email address.');
+      return;
+    }
+
+    if (!password || password.length < 6) {
+      setErrorMessage('Password must be at least 6 characters.');
       return;
     }
 
     setIsLoading(true);
 
-    // Realistic auth evaluation
-    setTimeout(() => {
-      setIsLoading(false);
-
-      const isReturning =
-        initialMode === 'signin' && knownReturningEmails.includes(trimmed.toLowerCase());
-
-      if (isReturning) {
-        onSuccess('returning', trimmed, 'Satyam');
+    try {
+      if (authType === 'signup') {
+        await signUpWithEmail(trimmedEmail, password);
+        onSuccess('new', trimmedEmail);
       } else {
-        const username = trimmed.split('@')[0];
-        const formattedName = username.charAt(0).toUpperCase() + username.slice(1);
-        onSuccess('new', trimmed, formattedName || 'Founder');
+        await signInWithEmail(trimmedEmail, password);
+        const isReturning = profile?.onboardingCompleted ?? true;
+        onSuccess(isReturning ? 'returning' : 'new', trimmedEmail);
       }
-    }, 450);
+    } catch (err: any) {
+      const code = err?.code || err?.message || 'Authentication failed';
+      setErrorMessage(getFriendlyAuthErrorMessage(code));
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleGoogleAuth = () => {
+  const handleGoogleAuth = async () => {
     setErrorMessage(null);
+
+    if (!isConfigured) {
+      setErrorMessage(`Missing Firebase configuration: ${missingConfig.join(', ')}`);
+      return;
+    }
+
     setIsGoogleLoading(true);
 
-    // Seamless Google Auth simulation
-    setTimeout(() => {
+    try {
+      await signInWithGoogle();
+      const isReturning = profile?.onboardingCompleted ?? false;
+      onSuccess(isReturning ? 'returning' : 'new', email || 'founder@launchproof.com');
+    } catch (err: any) {
+      const code = err?.code || err?.message || 'Google sign in failed';
+      setErrorMessage(getFriendlyAuthErrorMessage(code));
+    } finally {
       setIsGoogleLoading(false);
-      if (initialMode === 'signin') {
-        onSuccess('returning', 'satyam@example.com', 'Satyam');
-      } else {
-        // New user automatically routes into the 3-step onboarding flow
-        onSuccess('new', 'founder@launchproof.com', 'Founder');
-      }
-    }, 500);
+    }
   };
 
   return (
@@ -104,7 +134,7 @@ export function AuthScreen({
         </button>
 
         <span className="text-[11px] font-medium text-slate-400">
-          Secure Authentication
+          Firebase Authentication
         </span>
       </div>
 
@@ -120,18 +150,41 @@ export function AuthScreen({
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
-            Welcome to LaunchProof
+            {authType === 'signup' ? 'Create your account' : 'Welcome back'}
           </h1>
 
           <p className="text-xs sm:text-[13px] text-slate-500 mt-1.5 font-normal leading-relaxed max-w-[290px]">
-            Test your product before your first real users do.
+            {authType === 'signup'
+              ? 'Test your product before your first real users do.'
+              : 'Sign in to access your product checks and reports.'}
           </p>
         </div>
+
+        {/* Missing Firebase Configuration Notice */}
+        {!isConfigured && (
+          <div className="mb-5 p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-left animate-in fade-in duration-200">
+            <div className="flex items-start gap-2 text-amber-900 text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Missing Firebase configuration</p>
+                <p className="font-normal text-[11px] text-amber-800 mt-1 leading-relaxed">
+                  The following environment variables are required in the Secrets panel:
+                </p>
+                <ul className="list-disc list-inside text-[10px] font-mono text-amber-900 mt-1 space-y-0.5">
+                  {missingConfig.map((k) => (
+                    <li key={k}>{k}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             GOOGLE AUTHENTICATION (PRIMARY SOCIAL)
            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
         <button
+          id="btn-google-auth"
           type="button"
           onClick={handleGoogleAuth}
           disabled={isLoading || isGoogleLoading}
@@ -183,64 +236,123 @@ export function AuthScreen({
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             EMAIL AUTHENTICATION FORM
            ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        <form onSubmit={handleEmailSubmit} className="space-y-4">
+        <form onSubmit={handleEmailAuth} className="space-y-3.5">
           <div>
             <label
               htmlFor="auth-email-input"
-              className="block text-xs font-bold text-slate-800 mb-1.5"
+              className="block text-xs font-bold text-slate-800 mb-1"
             >
               Email address
             </label>
             
-            <input
-              id="auth-email-input"
-              type="email"
-              required
-              autoFocus
-              autoComplete="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                if (errorMessage) setErrorMessage(null);
-              }}
-              disabled={isLoading || isGoogleLoading}
-              className={`w-full h-12 px-3.5 rounded-xl border bg-white text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all focus:outline-hidden focus:ring-2 ${
-                errorMessage
-                  ? 'border-rose-300 focus:ring-rose-200'
-                  : 'border-slate-200/90 focus:border-[#0066ff] focus:ring-[#0066ff]/15'
-              }`}
-            />
-
-            {/* Validation / Error state */}
-            {errorMessage && (
-              <div className="mt-2 text-xs text-rose-600 flex items-center gap-1.5 animate-in fade-in duration-150">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
+            <div className="relative">
+              <input
+                id="auth-email-input"
+                type="email"
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                disabled={isLoading || isGoogleLoading}
+                className="w-full h-11 px-3.5 pl-9 rounded-xl border border-slate-200/90 bg-white text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all focus:outline-hidden focus:border-[#0066ff] focus:ring-2 focus:ring-[#0066ff]/15"
+              />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none" />
+            </div>
           </div>
 
-          {/* Primary Continue Button */}
+          <div>
+            <label
+              htmlFor="auth-password-input"
+              className="block text-xs font-bold text-slate-800 mb-1"
+            >
+              Password
+            </label>
+            
+            <div className="relative">
+              <input
+                id="auth-password-input"
+                type="password"
+                required
+                minLength={6}
+                autoComplete={authType === 'signup' ? 'new-password' : 'current-password'}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                disabled={isLoading || isGoogleLoading}
+                className="w-full h-11 px-3.5 pl-9 rounded-xl border border-slate-200/90 bg-white text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all focus:outline-hidden focus:border-[#0066ff] focus:ring-2 focus:ring-[#0066ff]/15"
+              />
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5 pointer-events-none" />
+            </div>
+          </div>
+
+          {/* Error display */}
+          {errorMessage && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-start gap-2 animate-in fade-in duration-150">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Primary Submit Button */}
           <button
             id="btn-auth-continue"
             type="submit"
             disabled={isLoading || isGoogleLoading}
-            className="w-full h-12 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_2px_8px_rgba(0,102,255,0.2)] transition-all cursor-pointer disabled:opacity-60"
+            className="w-full h-12 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-[0_2px_8px_rgba(0,102,255,0.2)] transition-all cursor-pointer disabled:opacity-60 mt-2"
           >
             {isLoading ? (
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Continuing...</span>
+                <span>Processing...</span>
               </div>
             ) : (
               <>
-                <span>Continue</span>
+                <span>{authType === 'signup' ? 'Create Account' : 'Sign In'}</span>
                 <ArrowRight className="w-3.5 h-3.5 stroke-[2.4]" />
               </>
             )}
           </button>
         </form>
+
+        {/* Mode Toggle (Sign In vs Create Account) */}
+        <div className="mt-4 text-center">
+          {authType === 'signup' ? (
+            <p className="text-xs text-slate-500">
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType('signin');
+                  setErrorMessage(null);
+                }}
+                className="text-[#0066ff] hover:underline font-semibold cursor-pointer"
+              >
+                Sign In
+              </button>
+            </p>
+          ) : (
+            <p className="text-xs text-slate-500">
+              Don&apos;t have an account?{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthType('signup');
+                  setErrorMessage(null);
+                }}
+                className="text-[#0066ff] hover:underline font-semibold cursor-pointer"
+              >
+                Create one
+              </button>
+            </p>
+          )}
+        </div>
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             TERMS & PRIVACY
