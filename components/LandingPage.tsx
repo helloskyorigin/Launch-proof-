@@ -29,10 +29,12 @@ interface LandingPageProps {
   onEnterApp?: (initialUrl?: string) => void;
   onNavigateToAuth?: (mode: 'check' | 'signin') => void;
   onNavigateToOnboarding?: () => void;
+  onTryDemo?: () => void;
 }
 
 export function LandingPage({
   onNavigateToAuth,
+  onTryDemo,
 }: LandingPageProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
@@ -110,13 +112,13 @@ export function LandingPage({
           <button
             onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
             className="flex items-center gap-2.5 text-slate-950 font-bold text-base sm:text-lg group cursor-pointer text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#0066ff] rounded-md p-1"
-            aria-label="LaunchProof Home"
+            aria-label="ShipScan Home"
           >
             <div className="w-6 h-6 rounded bg-[#0066ff] text-white flex items-center justify-center font-black text-xs shadow-xs group-hover:bg-[#0055d4] transition-colors">
-              L
+              S
             </div>
             <span className="font-extrabold tracking-tight text-slate-950 text-base sm:text-lg">
-              LaunchProof
+              ShipScan
             </span>
           </button>
 
@@ -138,6 +140,15 @@ export function LandingPage({
 
           {/* Desktop Auth CTAs */}
           <div className="hidden md:flex items-center gap-3">
+            {onTryDemo && (
+              <button
+                id="btn-landing-try-demo"
+                onClick={onTryDemo}
+                className="text-[13px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100/80 border border-amber-200/80 px-3 py-1.5 rounded-lg transition-colors cursor-pointer"
+              >
+                Try Demo
+              </button>
+            )}
             <button
               onClick={() => handleOpenAuth('signin')}
               className="text-[13px] font-semibold text-slate-700 hover:text-slate-950 px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
@@ -180,9 +191,9 @@ export function LandingPage({
                 <div className="flex items-center justify-between pb-5 border-b border-slate-100">
                   <div className="flex items-center gap-2">
                     <div className="w-6 h-6 rounded bg-[#0066ff] text-white flex items-center justify-center font-black text-xs">
-                      L
+                      S
                     </div>
-                    <span className="font-extrabold tracking-tight text-slate-950 text-base">LaunchProof</span>
+                    <span className="font-extrabold tracking-tight text-slate-950 text-base">ShipScan</span>
                   </div>
                   <button
                     onClick={() => setMobileMenuOpen(false)}
@@ -194,6 +205,18 @@ export function LandingPage({
                 </div>
 
                 <div className="flex flex-col py-6 space-y-2 text-base font-semibold text-slate-800">
+                  {onTryDemo && (
+                    <button
+                      id="btn-mobile-try-demo"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        onTryDemo();
+                      }}
+                      className="text-left py-3 px-2 rounded-lg bg-amber-50 text-amber-800 font-bold hover:bg-amber-100/80 transition-colors cursor-pointer"
+                    >
+                      Try Demo
+                    </button>
+                  )}
                   <button
                     onClick={() => scrollToSection('how-it-works')}
                     className="text-left py-3 px-2 rounded-lg hover:bg-slate-50 hover:text-[#0066ff] transition-colors cursor-pointer"

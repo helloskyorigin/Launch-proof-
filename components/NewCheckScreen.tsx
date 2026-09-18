@@ -10,11 +10,15 @@ import { FixPlanView, FixPlanItem } from './check/FixPlanView';
 import { RecheckConfirmView } from './check/RecheckConfirmView';
 import { CheckRecord, Finding } from '@/lib/checks/check-store';
 import { useAuth } from '@/lib/firebase/context';
+import { Compass, ArrowRight } from 'lucide-react';
 
 interface NewCheckScreenProps {
   onBack: () => void;
   onCheckCompleted?: (checkData: any) => void;
   initialUrl?: string;
+  isDemoMode?: boolean;
+  onExitDemoToAuth?: () => void;
+  onContinueDemo?: () => void;
 }
 
 type ScreenStage =
@@ -26,7 +30,14 @@ type ScreenStage =
   | 'fix_plan'
   | 'recheck_confirm';
 
-export function NewCheckScreen({ onBack, onCheckCompleted, initialUrl = '' }: NewCheckScreenProps) {
+export function NewCheckScreen({
+  onBack,
+  onCheckCompleted,
+  initialUrl = '',
+  isDemoMode = false,
+  onExitDemoToAuth,
+  onContinueDemo,
+}: NewCheckScreenProps) {
   const { getIdToken } = useAuth();
   const [stage, setStage] = useState<ScreenStage>('input');
 
@@ -55,6 +66,62 @@ export function NewCheckScreen({ onBack, onCheckCompleted, initialUrl = '' }: Ne
 
   // Fix Plan Tasks derived from real findings
   const [fixPlanTasks, setFixPlanTasks] = useState<FixPlanItem[]>([]);
+
+  // If in Demo Mode, do NOT run real backend pipeline. Display Demo prompt:
+  if (isDemoMode) {
+    return (
+      <div className="w-full max-w-md mx-auto p-6 sm:p-8 bg-white rounded-2xl sm:border sm:border-slate-200/80 shadow-[0_4px_24px_rgba(0,0,0,0.03)] text-center my-auto animate-in fade-in zoom-in-95 duration-200">
+        <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 text-amber-700 flex items-center justify-center mx-auto mb-4">
+          <Compass className="w-6 h-6 stroke-[2.2]" />
+        </div>
+
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[11px] font-bold uppercase tracking-wider mb-2">
+          Demo Mode
+        </div>
+
+        <h2 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
+          Sign in to run real checks and save results.
+        </h2>
+
+        <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed">
+          You are currently in Demo Mode. Real audits require a signed-in account to allocate analysis workers and save reports.
+        </p>
+
+        <div className="mt-6 space-y-2.5">
+          <button
+            id="btn-demo-newcheck-signin"
+            type="button"
+            onClick={() => {
+              if (onExitDemoToAuth) {
+                onExitDemoToAuth();
+              } else {
+                onBack();
+              }
+            }}
+            className="w-full h-11 px-4 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-[0_2px_8px_rgba(0,102,255,0.2)] transition-all cursor-pointer"
+          >
+            <span>Sign In</span>
+            <ArrowRight className="w-4 h-4 stroke-[2.2]" />
+          </button>
+
+          <button
+            id="btn-demo-newcheck-continue"
+            type="button"
+            onClick={() => {
+              if (onContinueDemo) {
+                onContinueDemo();
+              } else {
+                onBack();
+              }
+            }}
+            className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <span>Continue Demo</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // 1. Submit from Input Screen -> Direct to Checking/Loading screen
   const handleInputSubmit = (submitted: {

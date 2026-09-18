@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import React, { useState } from 'react';
@@ -325,6 +326,26 @@ export function EvidenceViewModal({
                   </div>
                 </div>
               </div>
+
+              {/* Desktop Screenshot */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Playwright Desktop Capture (1280 × 800)
+                </span>
+                {desktop?.screenshot ? (
+                  <div className="rounded-lg overflow-hidden border border-slate-200 bg-white">
+                    <img
+                      src={desktop.screenshot}
+                      alt={`Desktop Playwright capture of ${cleanUrl}`}
+                      className="w-full h-auto max-h-[300px] object-contain object-top"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-slate-400 text-xs italic">
+                    No screenshot was captured for this check.
+                  </p>
+                )}
+              </div>
             </div>
           ) : activeTab === 'mobile' ? (
             <div className="space-y-3">
@@ -383,6 +404,26 @@ export function EvidenceViewModal({
                     <span className="text-[10px] text-slate-400 uppercase">Mobile Links</span>
                   </div>
                 </div>
+              </div>
+
+              {/* Mobile Screenshot */}
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                  Playwright Mobile Capture (390 × 844)
+                </span>
+                {mobile?.screenshot ? (
+                  <div className="rounded-lg overflow-hidden border border-slate-200 bg-white max-w-[280px] mx-auto">
+                    <img
+                      src={mobile.screenshot}
+                      alt={`Mobile Playwright capture of ${cleanUrl}`}
+                      className="w-full h-auto max-h-[360px] object-contain object-top"
+                    />
+                  </div>
+                ) : (
+                  <p className="text-slate-400 text-xs italic">
+                    No screenshot was captured for this check.
+                  </p>
+                )}
               </div>
             </div>
           ) : (

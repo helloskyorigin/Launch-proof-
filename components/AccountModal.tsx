@@ -8,9 +8,17 @@ interface AccountModalProps {
   isOpen: boolean;
   onClose: () => void;
   onNavigate: (screen: string) => void;
+  isDemoMode?: boolean;
+  onExitDemoToAuth?: () => void;
 }
 
-export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps) {
+export function AccountModal({
+  isOpen,
+  onClose,
+  onNavigate,
+  isDemoMode = false,
+  onExitDemoToAuth,
+}: AccountModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
   const { user, profile, signOut } = useAuth();
 
@@ -34,12 +42,32 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
 
   if (!isOpen) return null;
 
-  const displayName = user?.displayName || profile?.name || user?.email?.split('@')[0] || 'Founder';
-  const displayEmail = user?.email || profile?.email || 'founder@launchproof.com';
-  const initial = displayName.charAt(0).toUpperCase() || 'F';
-  const planName = profile?.plan === 'pro' ? 'Pro Plan' : profile?.plan === 'pro_plus' ? 'Pro Plus Plan' : 'Free Starter Plan';
+  const displayName = isDemoMode
+    ? 'Demo User'
+    : user?.displayName || profile?.name || user?.email?.split('@')[0] || 'Founder';
+  const displayEmail = isDemoMode
+    ? 'Demo Mode'
+    : user?.email || profile?.email || 'founder@shipscan.app';
+  const initial = displayName.charAt(0).toUpperCase() || 'D';
+  const planName = isDemoMode
+    ? 'Demo Mode Preview'
+    : profile?.plan === 'pro'
+    ? 'Pro Plan'
+    : profile?.plan === 'pro_plus'
+    ? 'Pro Plus Plan'
+    : 'Free Starter Plan';
 
   const handleSignOut = async () => {
+    if (isDemoMode) {
+      onClose();
+      if (onExitDemoToAuth) {
+        onExitDemoToAuth();
+      } else {
+        onNavigate('landing');
+      }
+      return;
+    }
+
     try {
       await signOut();
     } catch (err) {
@@ -64,7 +92,9 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
         <div className="flex items-center justify-between pb-4 border-b border-slate-100">
           <div className="flex items-center gap-2">
             <User className="w-5 h-5 text-[#0066ff]" />
-            <h3 className="text-base font-bold text-slate-900">Account & Profile</h3>
+            <h3 className="text-base font-bold text-slate-900">
+              {isDemoMode ? 'Demo Account' : 'Account & Profile'}
+            </h3>
           </div>
           <button
             id="btn-close-account-modal"
@@ -78,59 +108,98 @@ export function AccountModal({ isOpen, onClose, onNavigate }: AccountModalProps)
 
         {/* User Card */}
         <div className="mt-5 p-4 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-lg flex items-center justify-center border border-blue-100 shrink-0">
+          <div
+            className={`w-12 h-12 rounded-full font-bold text-lg flex items-center justify-center shrink-0 shadow-2xs ${
+              isDemoMode
+                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                : 'bg-[#ebf4ff] text-[#0066ff] border border-blue-100'
+            }`}
+          >
             {initial}
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-sm font-bold text-slate-900 truncate">{displayName}</h4>
-            <p className="text-xs text-slate-500 font-mono truncate">{displayEmail}</p>
-            <div className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full mt-1">
+            <p className="text-xs text-slate-500 font-medium truncate">{displayEmail}</p>
+            <div
+              className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full mt-1 ${
+                isDemoMode
+                  ? 'text-amber-800 bg-amber-100/70 border border-amber-200'
+                  : 'text-emerald-600 bg-emerald-50'
+              }`}
+            >
               <Check className="w-3 h-3" />
               <span>{planName}</span>
             </div>
           </div>
         </div>
 
-        {/* Quick Account Navigation Items */}
-        <div className="mt-4 space-y-1.5">
-          <button
-            onClick={() => {
-              onClose();
-              onNavigate('settings');
-            }}
-            className="w-full p-3 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer text-left"
-          >
-            <div className="flex items-center gap-3 text-sm font-medium">
-              <Settings className="w-4 h-4 text-slate-400" />
-              <span>Workspace Settings</span>
+        {/* Demo Mode Actions vs Real Account Navigation */}
+        {isDemoMode ? (
+          <div className="mt-5 space-y-3">
+            <div className="p-3.5 bg-blue-50/70 border border-blue-100 rounded-xl text-xs text-slate-700 leading-relaxed">
+              <p className="font-semibold text-slate-900 mb-0.5">Exploring ShipScan in Demo Mode</p>
+              <p className="text-slate-600">
+                You are viewing a pre-analyzed sample report. Sign in to analyze your live product and save checks.
+              </p>
             </div>
-            <ChevronRight className="w-4 h-4 text-slate-400" />
-          </button>
 
-          <button
-            onClick={() => {
-              onClose();
-              onNavigate('pricing');
-            }}
-            className="w-full p-3 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer text-left"
-          >
-            <div className="flex items-center gap-3 text-sm font-medium">
-              <Shield className="w-4 h-4 text-slate-400" />
-              <span>Upgrade to Pro Plan</span>
-            </div>
-            <span className="text-xs font-semibold text-[#0066ff]">View Plans</span>
-          </button>
-        </div>
+            <button
+              id="btn-modal-demo-signin"
+              onClick={() => {
+                onClose();
+                if (onExitDemoToAuth) {
+                  onExitDemoToAuth();
+                } else {
+                  onNavigate('auth');
+                }
+              }}
+              className="w-full h-11 px-4 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] active:scale-[0.99] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-xs transition-all cursor-pointer"
+            >
+              <span>Sign in to use ShipScan</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-1.5">
+            <button
+              onClick={() => {
+                onClose();
+                onNavigate('settings');
+              }}
+              className="w-full p-3 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3 text-sm font-medium">
+                <Settings className="w-4 h-4 text-slate-400" />
+                <span>Workspace Settings</span>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+
+            <button
+              onClick={() => {
+                onClose();
+                onNavigate('pricing');
+              }}
+              className="w-full p-3 rounded-xl flex items-center justify-between hover:bg-slate-50 text-slate-700 transition-colors cursor-pointer text-left"
+            >
+              <div className="flex items-center gap-3 text-sm font-medium">
+                <Shield className="w-4 h-4 text-slate-400" />
+                <span>Upgrade to Pro Plan</span>
+              </div>
+              <span className="text-xs font-semibold text-[#0066ff]">View Plans</span>
+            </button>
+          </div>
+        )}
 
         <div className="border-t border-slate-100 my-4" />
 
-        {/* Sign Out Action */}
+        {/* Bottom Action */}
         <button
           onClick={handleSignOut}
-          className="w-full py-3 px-4 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-rose-600 hover:bg-slate-50 flex items-center justify-center gap-2 transition-colors cursor-pointer"
         >
           <LogOut className="w-4 h-4" />
-          <span>Sign Out</span>
+          <span>{isDemoMode ? 'Exit Demo Mode' : 'Sign Out'}</span>
         </button>
       </div>
     </div>

@@ -27,6 +27,8 @@ interface SlideDrawerProps {
   reportCount?: number;
   userName?: string;
   userEmail?: string;
+  isDemoMode?: boolean;
+  onExitDemoToAuth?: () => void;
 }
 
 export function SlideDrawer({
@@ -36,10 +38,16 @@ export function SlideDrawer({
   onNavigate,
   userName: propsUserName,
   userEmail: propsUserEmail,
+  isDemoMode = false,
+  onExitDemoToAuth,
 }: SlideDrawerProps) {
   const { user, profile, signOut } = useAuth();
-  const userName = user?.displayName || profile?.name || propsUserName || user?.email?.split('@')[0] || 'Founder';
-  const userEmail = user?.email || profile?.email || propsUserEmail || 'founder@launchproof.com';
+  const userName = isDemoMode
+    ? 'Demo User'
+    : user?.displayName || profile?.name || propsUserName || user?.email?.split('@')[0] || 'Founder';
+  const userEmail = isDemoMode
+    ? 'Demo Mode'
+    : user?.email || profile?.email || propsUserEmail || 'founder@shipscan.app';
 
   const [isAccountExpanded, setIsAccountExpanded] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -235,16 +243,28 @@ export function SlideDrawer({
             className="w-full min-h-[50px] flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 active:bg-slate-100/70 transition-all cursor-pointer text-left group"
           >
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="w-9 h-9 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs">
-                {userName ? userName.charAt(0).toUpperCase() : 'S'}
+              <div
+                className={`w-9 h-9 rounded-full font-bold text-sm flex items-center justify-center shrink-0 shadow-2xs ${
+                  isDemoMode
+                    ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                    : 'bg-[#ebf4ff] text-[#0066ff]'
+                }`}
+              >
+                {isDemoMode ? 'D' : userName ? userName.charAt(0).toUpperCase() : 'S'}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-[15px] sm:text-[16px] text-slate-900 truncate leading-snug">
                   {userName}
                 </div>
-                <div className="text-xs text-slate-400 font-normal truncate mt-0.5">
-                  {userEmail}
-                </div>
+                {isDemoMode ? (
+                  <div className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200 mt-0.5">
+                    Demo Mode
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-400 font-normal truncate mt-0.5">
+                    {userEmail}
+                  </div>
+                )}
               </div>
             </div>
             <div className="pl-2 shrink-0">
@@ -260,52 +280,97 @@ export function SlideDrawer({
           <div
             className={`transition-all duration-200 ease-out overflow-hidden ${
               isAccountExpanded
-                ? 'max-h-60 opacity-100 pt-2 space-y-1'
+                ? 'max-h-72 opacity-100 pt-2 space-y-1'
                 : 'max-h-0 opacity-0 pointer-events-none'
             }`}
           >
             <div className="border-t border-slate-100 my-1 mx-1" />
 
-            {/* Workspace Settings */}
-            <button
-              id="drawer-account-settings"
-              type="button"
-              onClick={() => handleItemClick('settings')}
-              className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 active:bg-slate-100/60 transition-colors cursor-pointer text-left group"
-            >
-              <div className="flex items-center gap-3 text-slate-700 group-hover:text-slate-900">
-                <Settings className="w-4.5 h-4.5 text-slate-400 group-hover:text-slate-600 stroke-[2]" />
-                <span className="text-[14px] sm:text-[15px] font-medium">Workspace Settings</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 stroke-[2]" />
-            </button>
+            {isDemoMode ? (
+              <>
+                {/* Demo Action: Sign in to use ShipScan */}
+                <button
+                  id="drawer-demo-signin-btn"
+                  type="button"
+                  onClick={() => {
+                    handleClose();
+                    if (onExitDemoToAuth) {
+                      onExitDemoToAuth();
+                    } else {
+                      onNavigate('auth');
+                    }
+                  }}
+                  className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl bg-[#0066ff] hover:bg-[#0055d4] text-white transition-colors cursor-pointer text-left font-semibold text-[13px] sm:text-[14px]"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <LogOut className="w-4 h-4 rotate-180 stroke-[2.2]" />
+                    <span>Sign in to use ShipScan</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-white/80" />
+                </button>
 
-            {/* Upgrade to Pro */}
-            <button
-              id="drawer-account-upgrade"
-              type="button"
-              onClick={() => handleItemClick('pricing')}
-              className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/50 transition-colors cursor-pointer text-left group"
-            >
-              <div className="flex items-center gap-3 text-[#0066ff]">
-                <ArrowUpRight className="w-4.5 h-4.5 text-[#0066ff] stroke-[2.3]" />
-                <span className="text-[14px] sm:text-[15px] font-semibold">Upgrade to Pro</span>
-              </div>
-              <ChevronRight className="w-4 h-4 text-[#0066ff]/50 group-hover:text-[#0066ff] stroke-[2]" />
-            </button>
+                {/* Exit Demo Mode */}
+                <button
+                  id="drawer-demo-exit-btn"
+                  type="button"
+                  onClick={() => {
+                    handleClose();
+                    if (onExitDemoToAuth) {
+                      onExitDemoToAuth();
+                    } else {
+                      onNavigate('landing');
+                    }
+                  }}
+                  className="w-full min-h-[42px] flex items-center gap-3 px-3 py-2 rounded-xl text-slate-600 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer text-left text-xs font-medium"
+                >
+                  <X className="w-4 h-4 text-slate-400" />
+                  <span>Exit Demo Mode</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Workspace Settings */}
+                <button
+                  id="drawer-account-settings"
+                  type="button"
+                  onClick={() => handleItemClick('settings')}
+                  className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-slate-50 active:bg-slate-100/60 transition-colors cursor-pointer text-left group"
+                >
+                  <div className="flex items-center gap-3 text-slate-700 group-hover:text-slate-900">
+                    <Settings className="w-4.5 h-4.5 text-slate-400 group-hover:text-slate-600 stroke-[2]" />
+                    <span className="text-[14px] sm:text-[15px] font-medium">Workspace Settings</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-400 stroke-[2]" />
+                </button>
 
-            <div className="border-t border-slate-100 my-1 mx-1" />
+                {/* Upgrade to Pro */}
+                <button
+                  id="drawer-account-upgrade"
+                  type="button"
+                  onClick={() => handleItemClick('pricing')}
+                  className="w-full min-h-[46px] flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-blue-50/60 active:bg-blue-100/50 transition-colors cursor-pointer text-left group"
+                >
+                  <div className="flex items-center gap-3 text-[#0066ff]">
+                    <ArrowUpRight className="w-4.5 h-4.5 text-[#0066ff] stroke-[2.3]" />
+                    <span className="text-[14px] sm:text-[15px] font-semibold">Upgrade to Pro</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-[#0066ff]/50 group-hover:text-[#0066ff] stroke-[2]" />
+                </button>
 
-            {/* Sign Out */}
-            <button
-              id="drawer-account-signout"
-              type="button"
-              onClick={() => setShowSignOutConfirm(true)}
-              className="w-full min-h-[46px] flex items-center gap-3 px-3 py-2.5 rounded-xl text-rose-600 hover:bg-rose-50/70 active:bg-rose-100/60 transition-colors cursor-pointer text-left"
-            >
-              <LogOut className="w-4.5 h-4.5 text-rose-500 stroke-[2]" />
-              <span className="text-[14px] sm:text-[15px] font-medium">Sign Out</span>
-            </button>
+                <div className="border-t border-slate-100 my-1 mx-1" />
+
+                {/* Sign Out */}
+                <button
+                  id="drawer-account-signout"
+                  type="button"
+                  onClick={() => setShowSignOutConfirm(true)}
+                  className="w-full min-h-[46px] flex items-center gap-3 px-3 py-2.5 rounded-xl text-rose-600 hover:bg-rose-50/70 active:bg-rose-100/60 transition-colors cursor-pointer text-left"
+                >
+                  <LogOut className="w-4.5 h-4.5 text-rose-500 stroke-[2]" />
+                  <span className="text-[14px] sm:text-[15px] font-medium">Sign Out</span>
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>

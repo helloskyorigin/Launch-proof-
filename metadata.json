@@ -1,6 +1,6 @@
 {
-  "name": "LaunchProof",
-  "description": "Built it? Test it before your first users do. First-User Readiness Engine for indie hackers and product founders.",
+  "name": "ShipScan",
+  "description": "First-user readiness engine. Test your product before your first users do.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

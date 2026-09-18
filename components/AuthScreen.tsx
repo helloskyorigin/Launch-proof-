@@ -12,20 +12,24 @@ import {
   Lock,
   Mail,
   KeyRound,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '@/lib/firebase/context';
 import { getFriendlyAuthErrorMessage } from '@/lib/firebase/auth';
+import { isDemoModeEnabled } from '@/lib/demo/demo-mode';
 
 interface AuthScreenProps {
   initialMode?: 'check' | 'signin';
   onSuccess: (userType: 'new' | 'returning', email: string, name?: string) => void;
   onBackToLanding: () => void;
+  onTryDemo?: () => void;
 }
 
 export function AuthScreen({
   initialMode = 'check',
   onSuccess,
   onBackToLanding,
+  onTryDemo,
 }: AuthScreenProps) {
   const {
     signInWithGoogle,
@@ -146,7 +150,7 @@ export function AuthScreen({
         {/* BRANDING: Logo + Welcome Heading */}
         <div className="flex flex-col items-center text-center mb-6">
           <div className="w-11 h-11 rounded-xl bg-[#0066ff] text-white flex items-center justify-center font-black text-xl shadow-xs mb-3.5 select-none">
-            L
+            S
           </div>
 
           <h1 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">
@@ -353,6 +357,32 @@ export function AuthScreen({
             </p>
           )}
         </div>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            DEMO MODE ACCESS (VISUALLY SECONDARY)
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {isDemoModeEnabled() && onTryDemo && (
+          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+                No sign-in required
+              </span>
+            </div>
+            <button
+              id="btn-try-demo"
+              type="button"
+              onClick={onTryDemo}
+              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:bg-slate-200/70 text-slate-700 font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs group"
+            >
+              <Compass className="w-4 h-4 text-[#0066ff] group-hover:rotate-45 transition-transform" />
+              <span>Try Demo Mode (Sample Result)</span>
+            </button>
+            <p className="text-[11px] text-slate-400 mt-1.5 font-normal">
+              Explore a completed readiness report for demo.shipscan.app
+            </p>
+          </div>
+        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             TERMS & PRIVACY

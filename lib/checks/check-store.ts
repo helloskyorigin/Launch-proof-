@@ -211,6 +211,7 @@ export interface CheckRecord {
   readinessScore?: ReadinessScoreResult;
   aiError?: string;
   error?: string;
+  isDemo?: boolean;
 }
 
 // In-memory check storage (persistent across requests in Node process)

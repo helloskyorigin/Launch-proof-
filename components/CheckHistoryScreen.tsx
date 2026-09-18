@@ -12,18 +12,22 @@ interface CheckItem {
   status?: 'Ready' | 'Needs Fix' | 'Draft';
   blockersCount?: number;
   importantCount?: number;
+  isDemo?: boolean;
+  label?: string;
 }
 
 interface CheckHistoryScreenProps {
   onNewCheck: () => void;
   checks?: CheckItem[];
   onSelectCheck?: (check: CheckItem) => void;
+  isDemoMode?: boolean;
 }
 
 export function CheckHistoryScreen({
   onNewCheck,
   checks = [],
   onSelectCheck,
+  isDemoMode = false,
 }: CheckHistoryScreenProps) {
   const [activeFilter, setActiveFilter] = useState<'all' | 'ready' | 'needs-fix' | 'drafts'>('all');
 
@@ -45,11 +49,23 @@ export function CheckHistoryScreen({
 
   return (
     <div className="w-full max-w-xl mx-auto px-4 sm:px-6 pt-1 pb-16 flex flex-col animate-in fade-in duration-200 select-none">
-      {/* 1. PAGE TITLE (Sits close to the header with clean spacing, no secondary paragraph) */}
-      <div className="mb-3.5 text-left">
-        <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-[1.2]">
-          Check History
-        </h1>
+      {/* 1. PAGE TITLE */}
+      <div className="mb-3.5 text-left flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight leading-[1.2]">
+            Check History
+          </h1>
+          {isDemoMode && (
+            <p className="text-xs text-amber-800 font-medium mt-1">
+              Demo Workspace — Displaying sample completed audit.
+            </p>
+          )}
+        </div>
+        {isDemoMode && (
+          <span className="px-2.5 py-1 rounded-full bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold uppercase tracking-wider">
+            Demo Mode
+          </span>
+        )}
       </div>
 
       {/* 2. FILTER BAR (ONLY VISIBLE WHEN USER HAS 1+ CHECKS) */}
@@ -123,9 +139,16 @@ export function CheckHistoryScreen({
                   {item.score ?? 80}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-bold text-slate-900 truncate">
-                    {item.name || item.url || 'Product Check'}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {item.name || item.url || 'Product Check'}
+                    </p>
+                    {(item.isDemo || item.label || isDemoMode) && (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                        {item.label || 'Demo check'}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-400 mt-0.5">
                     {item.date || 'Recent'}
                   </p>

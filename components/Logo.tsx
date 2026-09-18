@@ -14,8 +14,8 @@ export function Logo({ className = '', size = 'md' }: LogoProps) {
 
   return (
     <div className={`flex items-center tracking-tight font-bold select-none ${sizeClasses[size]} ${className}`}>
-      <span className="text-slate-950 font-extrabold">Launch</span>
-      <span className="text-[#0066ff] font-extrabold">Proof</span>
+      <span className="text-slate-950 font-extrabold">Ship</span>
+      <span className="text-[#0066ff] font-extrabold">Scan</span>
     </div>
   );
 }

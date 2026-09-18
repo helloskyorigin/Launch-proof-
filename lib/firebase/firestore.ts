@@ -12,7 +12,7 @@ import {
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
-import { getFirebaseDb, isFirebaseConfigured } from './client';
+import { getFirebaseDb, isFirebaseConfigured, getFirebaseAuth } from './client';
 import { CheckRecord, CheckStatus } from '@/lib/checks/check-store';
 
 export interface UserProfile {
@@ -58,6 +58,65 @@ export interface StoredCheckDocument {
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+// MANDATORY ERROR HANDLER
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  }
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch (e) {
+    // Auth not yet initialized
+  }
+
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified || null,
+      isAnonymous: auth?.currentUser?.isAnonymous || null,
+      tenantId: auth?.currentUser?.tenantId || null,
+      providerInfo: auth?.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+
+  console.error('Firestore Error context:', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // USER PROFILE OPERATIONS
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -65,12 +124,18 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   if (!isFirebaseConfigured()) return null;
   const db = getFirebaseDb();
   const userRef = doc(db, 'users', uid);
-  const snap = await getDoc(userRef);
+  const path = `users/${uid}`;
 
-  if (!snap.exists()) {
+  try {
+    const snap = await getDoc(userRef);
+    if (!snap.exists()) {
+      return null;
+    }
+    return snap.data() as UserProfile;
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
     return null;
   }
-  return snap.data() as UserProfile;
 }
 
 export async function createOrUpdateUserProfile(
@@ -86,16 +151,28 @@ export async function createOrUpdateUserProfile(
   }
   const db = getFirebaseDb();
   const userRef = doc(db, 'users', uid);
-  const existing = await getDoc(userRef);
+  const path = `users/${uid}`;
+
+  let existing;
+  try {
+    existing = await getDoc(userRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
+    throw error;
+  }
 
   if (existing.exists()) {
     const existingData = existing.data() as UserProfile;
     // Update basic user info while preserving onboarding and plan state
-    await updateDoc(userRef, {
-      name: data.name || existingData.name || 'Founder',
-      photoURL: data.photoURL ?? existingData.photoURL ?? null,
-      updatedAt: serverTimestamp(),
-    });
+    try {
+      await updateDoc(userRef, {
+        name: data.name || existingData.name || 'Founder',
+        photoURL: data.photoURL ?? existingData.photoURL ?? null,
+        updatedAt: serverTimestamp(),
+      });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, path);
+    }
     return {
       ...existingData,
       name: data.name || existingData.name || 'Founder',
@@ -115,7 +192,11 @@ export async function createOrUpdateUserProfile(
     updatedAt: serverTimestamp(),
   };
 
-  await setDoc(userRef, initialProfile);
+  try {
+    await setDoc(userRef, initialProfile);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.CREATE, path);
+  }
   return initialProfile;
 }
 
@@ -131,26 +212,30 @@ export async function saveUserOnboardingProfile(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const userRef = doc(db, 'users', uid);
+  const path = `users/${uid}`;
 
-  await setDoc(
-    userRef,
-    {
-      productType: onboarding.buildingType || null,
-      currentStage: onboarding.productStage || null,
-      auditFocus: onboarding.focusArea || null,
-      onboardingCompleted: true,
-      onboardingSkipped: Boolean(onboarding.skipped),
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  try {
+    await setDoc(
+      userRef,
+      {
+        productType: onboarding.buildingType || null,
+        currentStage: onboarding.productStage || null,
+        auditFocus: onboarding.focusArea || null,
+        onboardingCompleted: true,
+        onboardingSkipped: Boolean(onboarding.skipped),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // USER CHECKS OPERATIONS (users/{uid}/checks/{checkId})
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-// Clean large raw payloads to prevent Firestore size issues
 function sanitizeEvidenceForFirestore(evidence: any) {
   if (!evidence) return null;
   const clean: any = {};
@@ -165,7 +250,6 @@ function sanitizeEvidenceForFirestore(evidence: any) {
       consoleErrors: evidence.desktop.consoleErrors?.slice(0, 15) || [],
       failedRequests: evidence.desktop.failedRequests?.slice(0, 15) || [],
       httpStatus: evidence.desktop.httpStatus,
-      // Exclude large screenshot base64 strings if any
     };
   }
   if (evidence.mobile) {
@@ -269,9 +353,14 @@ export async function saveUserCheckToFirestore(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', check.id);
+  const path = `users/${userId}/checks/${check.id}`;
   const storedDoc = mapCheckRecordToStoredDoc(check, userId, parentCheckId);
 
-  await setDoc(checkRef, storedDoc, { merge: true });
+  try {
+    await setDoc(checkRef, storedDoc, { merge: true });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.WRITE, path);
+  }
 }
 
 export async function getUserCheckFromFirestore(
@@ -281,24 +370,36 @@ export async function getUserCheckFromFirestore(
   if (!isFirebaseConfigured()) return null;
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
-  const snap = await getDoc(checkRef);
+  const path = `users/${userId}/checks/${checkId}`;
 
-  if (!snap.exists()) {
+  try {
+    const snap = await getDoc(checkRef);
+    if (!snap.exists()) {
+      return null;
+    }
+    return mapStoredDocToCheckRecord(snap.data() as StoredCheckDocument);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.GET, path);
     return null;
   }
-  return mapStoredDocToCheckRecord(snap.data() as StoredCheckDocument);
 }
 
 export async function getUserChecksFromFirestore(userId: string): Promise<CheckRecord[]> {
   if (!isFirebaseConfigured()) return [];
   const db = getFirebaseDb();
   const checksCol = collection(db, 'users', userId, 'checks');
+  const path = `users/${userId}/checks`;
   const q = query(checksCol, orderBy('createdAt', 'desc'));
-  const snap = await getDocs(q);
 
-  return snap.docs.map((docSnap) =>
-    mapStoredDocToCheckRecord(docSnap.data() as StoredCheckDocument)
-  );
+  try {
+    const snap = await getDocs(q);
+    return snap.docs.map((docSnap) =>
+      mapStoredDocToCheckRecord(docSnap.data() as StoredCheckDocument)
+    );
+  } catch (error) {
+    handleFirestoreError(error, OperationType.LIST, path);
+    return [];
+  }
 }
 
 export async function deleteUserCheckFromFirestore(
@@ -308,11 +409,17 @@ export async function deleteUserCheckFromFirestore(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
-  await deleteDoc(checkRef);
+  const path = `users/${userId}/checks/${checkId}`;
+
+  try {
+    await deleteDoc(checkRef);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
 }
 
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-// STEP 6 SPECIFIED SERVICE REPOSITORY API
+// SERVICE REPOSITORY API
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 export const createUserProfile = createOrUpdateUserProfile;
@@ -324,10 +431,16 @@ export async function updateUserProfile(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const userRef = doc(db, 'users', uid);
-  await updateDoc(userRef, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+  const path = `users/${uid}`;
+
+  try {
+    await updateDoc(userRef, {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 }
 
 export async function createCheck(
@@ -356,6 +469,7 @@ export async function updateCheckStatus(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
+  const path = `users/${userId}/checks/${checkId}`;
   const updatePayload: any = {
     status,
     updatedAt: new Date().toISOString(),
@@ -369,7 +483,12 @@ export async function updateCheckStatus(
     if (results.summary) updatePayload.summary = results.summary;
     if (results.fixPlan) updatePayload.fixPlan = results.fixPlan;
   }
-  await updateDoc(checkRef, updatePayload);
+
+  try {
+    await updateDoc(checkRef, updatePayload);
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 }
 
 export async function saveFixPlan(
@@ -380,10 +499,16 @@ export async function saveFixPlan(
   if (!isFirebaseConfigured()) return;
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
-  await updateDoc(checkRef, {
-    fixPlan: planData,
-    updatedAt: new Date().toISOString(),
-  });
+  const path = `users/${userId}/checks/${checkId}`;
+
+  try {
+    await updateDoc(checkRef, {
+      fixPlan: planData,
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    handleFirestoreError(error, OperationType.UPDATE, path);
+  }
 }
 
 export async function getFixPlan(
@@ -393,4 +518,3 @@ export async function getFixPlan(
   const check = await getUserCheckFromFirestore(userId, checkId);
   return check?.scoring?.fixPlan || null;
 }
-

@@ -59,13 +59,14 @@ export default function CheckDetailPage() {
     }
   };
 
+  const [retryTrigger, setRetryTrigger] = useState(0);
+
   useEffect(() => {
     if (!id) return;
-
     let isMounted = true;
-    async function fetchCheck() {
+
+    async function load() {
       try {
-        setLoading(true);
         const headers: Record<string, string> = {};
         if (getIdToken) {
           const token = await getIdToken();
@@ -95,15 +96,23 @@ export default function CheckDetailPage() {
           setError('Failed to load check details.');
         }
       } finally {
-        if (isMounted) setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     }
 
-    fetchCheck();
+    load();
     return () => {
       isMounted = false;
     };
-  }, [id, getIdToken]);
+  }, [id, getIdToken, retryTrigger]);
+
+  const handleRetry = () => {
+    setLoading(true);
+    setError(null);
+    setRetryTrigger((prev) => prev + 1);
+  };
 
   const handleCheckingComplete = (completedCheck: CheckRecord) => {
     setCheck(completedCheck);
@@ -177,37 +186,73 @@ export default function CheckDetailPage() {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] w-full bg-[#f8fafc] text-slate-900 flex flex-col items-center">
+    <div className="min-h-screen min-h-[100dvh] w-full bg-[#F7F8FA] text-[#111827] flex flex-col items-center">
       <div className="w-full max-w-md sm:max-w-lg min-h-screen flex flex-col relative">
-        <Header
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onOpenAccount={() => setAccountModalOpen(true)}
-          onNavigate={(screenId) => {
-            router.push(`/?screen=${screenId}`);
-          }}
-          currentScreen="new-check"
-        />
+        {/* Only show global header during non-result stages; Result screen has its own clean header */}
+        {stage !== 'result' && (
+          <Header
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onOpenAccount={() => setAccountModalOpen(true)}
+            onNavigate={(screenId) => {
+              router.push(`/?screen=${screenId}`);
+            }}
+            currentScreen="new-check"
+          />
+        )}
 
         <main className="flex-1 w-full max-w-xl mx-auto flex flex-col justify-center">
           {loading ? (
-            <div className="flex flex-col items-center justify-center py-20">
-              <Loader2 className="w-7 h-7 text-[#0066ff] animate-spin mb-3 stroke-[2.4]" />
-              <p className="text-xs font-semibold text-slate-500">Loading check...</p>
+            <div className="flex flex-col items-center justify-center py-24 min-h-[60vh]">
+              <Loader2 className="w-6 h-6 text-[#2563EB] animate-spin mb-3 stroke-[2.2]" />
+              <p className="text-xs font-medium text-[#667085]">Loading result...</p>
             </div>
-          ) : error || !check ? (
-            <div className="w-full max-w-md mx-auto p-6 bg-white rounded-2xl border border-slate-200/90 shadow-[0_4px_24px_rgba(0,0,0,0.03)] text-center my-auto">
+          ) : error ? (
+            <div className="w-full max-w-sm mx-auto p-6 bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] text-center my-auto shadow-xs">
               <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
-                <AlertCircle className="w-5 h-5 stroke-[2.3]" />
+                <AlertCircle className="w-5 h-5 stroke-[2.2]" />
               </div>
-              <h2 className="text-base font-bold text-slate-900 mb-1">Check Not Found</h2>
-              <p className="text-xs text-slate-500 mb-4">{error || 'This check does not exist or has expired.'}</p>
+              <h2 className="text-base font-bold text-[#111827] mb-1">
+                Couldn&apos;t load this result.
+              </h2>
+              <p className="text-xs text-[#667085] mb-5 leading-relaxed">
+                {error}
+              </p>
+              <div className="flex items-center justify-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleRetry}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-[#2563EB] text-white text-xs font-semibold hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
+                >
+                  Retry
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.push('/')}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-slate-100 text-[#111827] text-xs font-semibold hover:bg-slate-200 active:scale-95 transition-all cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                  <span>Return to ShipScan</span>
+                </button>
+              </div>
+            </div>
+          ) : !check ? (
+            <div className="w-full max-w-sm mx-auto p-6 bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] text-center my-auto shadow-xs">
+              <div className="w-10 h-10 rounded-xl bg-slate-100 text-[#667085] flex items-center justify-center mx-auto mb-3">
+                <AlertCircle className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <h2 className="text-base font-bold text-[#111827] mb-1">
+                Result Unavailable
+              </h2>
+              <p className="text-xs text-[#667085] mb-5 leading-relaxed">
+                This check result is unavailable.
+              </p>
               <button
                 type="button"
                 onClick={() => router.push('/')}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors cursor-pointer"
+                className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 rounded-xl bg-[#111827] text-white text-xs font-semibold hover:bg-black active:scale-95 transition-all cursor-pointer"
               >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Return to LaunchProof</span>
+                <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                <span>Return to ShipScan</span>
               </button>
             </div>
           ) : stage === 'checking' ? (

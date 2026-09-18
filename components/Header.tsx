@@ -10,15 +10,19 @@ interface HeaderProps {
   onOpenAccount?: () => void;
   onNavigate?: (screen: string) => void;
   currentScreen?: string;
+  isDemoMode?: boolean;
 }
 
 export function Header({
   onOpenDrawer,
   onOpenAccount,
   onNavigate,
+  isDemoMode = false,
 }: HeaderProps) {
   const { user, profile } = useAuth();
-  const displayName = user?.displayName || profile?.name || user?.email || 'Founder';
+  const displayName = isDemoMode
+    ? 'Demo User'
+    : user?.displayName || profile?.name || user?.email || 'Founder';
   const initial = displayName.charAt(0).toUpperCase() || 'F';
 
   return (
@@ -39,10 +43,15 @@ export function Header({
       <div className="flex-1 flex items-center justify-center">
         <button
           onClick={() => onNavigate && onNavigate('home')}
-          className="cursor-pointer focus:outline-none flex items-center justify-center"
-          aria-label="LaunchProof Home"
+          className="cursor-pointer focus:outline-none flex items-center justify-center gap-2"
+          aria-label="ShipScan Home"
         >
           <Logo size="md" />
+          {isDemoMode && (
+            <span className="px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-700 text-[10px] font-bold tracking-wider uppercase border border-amber-500/20">
+              Demo
+            </span>
+          )}
         </button>
       </div>
 
@@ -58,7 +67,11 @@ export function Header({
             }
           }}
           aria-label="User profile & account"
-          className="w-9 h-9 rounded-full bg-[#ebf4ff] text-[#0066ff] font-bold text-xs sm:text-sm flex items-center justify-center border border-blue-100/60 hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-2xs"
+          className={`w-9 h-9 rounded-full font-bold text-xs sm:text-sm flex items-center justify-center hover:opacity-90 active:scale-95 transition-all cursor-pointer shadow-2xs ${
+            isDemoMode
+              ? 'bg-amber-100 text-amber-800 border border-amber-300'
+              : 'bg-[#ebf4ff] text-[#0066ff] border border-blue-100/60'
+          }`}
         >
           {initial}
         </button>
