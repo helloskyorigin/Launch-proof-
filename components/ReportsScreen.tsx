@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useState, useMemo, useEffect } from 'react';
 import {
@@ -381,6 +382,13 @@ interface ReportsScreenProps {
 export function ReportsScreen({ onNewCheck, reports }: ReportsScreenProps) {
   // Master list of reports (mock reports for prototype, or user reports if supplied)
   const [reportsList, setReportsList] = useState<ReportItem[]>(reports ?? MOCK_REPORTS);
+
+  // Synchronize reports list when the parent supplies real Firestore reports
+  useEffect(() => {
+    if (reports) {
+      setReportsList(reports);
+    }
+  }, [reports]);
 
   // Selected report for full drilldown view
   const [selectedReport, setSelectedReport] = useState<ReportItem | null>(null);

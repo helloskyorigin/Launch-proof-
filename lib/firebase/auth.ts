@@ -38,7 +38,7 @@ export function getFriendlyAuthErrorMessage(errorCode: string): string {
       if (errorCode.startsWith('Missing Firebase configuration')) {
         return errorCode;
       }
-      return 'Authentication failed. Please try again.';
+      return `Authentication failed (${errorCode}). Please try again.`;
   }
 }
 

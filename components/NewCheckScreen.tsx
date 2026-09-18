@@ -9,6 +9,7 @@ import { FindingDetailView } from './check/FindingDetailView';
 import { FixPlanView, FixPlanItem } from './check/FixPlanView';
 import { RecheckConfirmView } from './check/RecheckConfirmView';
 import { CheckRecord, Finding } from '@/lib/checks/check-store';
+import { useAuth } from '@/lib/firebase/context';
 
 interface NewCheckScreenProps {
   onBack: () => void;
@@ -26,6 +27,7 @@ type ScreenStage =
   | 'recheck_confirm';
 
 export function NewCheckScreen({ onBack, onCheckCompleted, initialUrl = '' }: NewCheckScreenProps) {
+  const { getIdToken } = useAuth();
   const [stage, setStage] = useState<ScreenStage>('input');
 
   // Input states
@@ -153,7 +155,14 @@ export function NewCheckScreen({ onBack, onCheckCompleted, initialUrl = '' }: Ne
   const handleRunRecheck = async () => {
     if (checkRecord?.id) {
       try {
-        await fetch(`/api/checks/${checkRecord.id}/run`, { method: 'POST' });
+        const headers: Record<string, string> = {};
+        if (getIdToken) {
+          const token = await getIdToken();
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
+        await fetch(`/api/checks/${checkRecord.id}/run`, { method: 'POST', headers });
       } catch (err) {
         console.error('Failed to trigger re-check:', err);
       }

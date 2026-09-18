@@ -11,6 +11,7 @@ import {
   Loader2,
   AlertCircle,
 } from 'lucide-react';
+import { useAuth } from '@/lib/firebase/context';
 
 export interface SubmittedCheckData {
   inputType: 'url' | 'screenshot';
@@ -30,6 +31,7 @@ export interface NewCheckInputProps {
 }
 
 export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInputProps) {
+  const { getIdToken } = useAuth();
   const [inputType, setInputType] = useState<'url' | 'screenshot'>('url');
   const [url, setUrl] = useState<string>(initialUrl || '');
   const [description, setDescription] = useState<string>('');
@@ -109,11 +111,18 @@ export function NewCheckInput({ initialUrl = '', onBack, onSubmit }: NewCheckInp
     setErrorMessage(null);
 
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (getIdToken) {
+        const token = await getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
       const response = await fetch('/api/checks/start', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({
           url: trimmedUrl,
           description: description.trim() || undefined,

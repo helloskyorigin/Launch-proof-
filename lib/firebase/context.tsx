@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { User, onAuthStateChanged } from 'firebase/auth';

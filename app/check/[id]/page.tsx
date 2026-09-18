@@ -12,10 +12,12 @@ import { SlideDrawer } from '@/components/SlideDrawer';
 import { AccountModal } from '@/components/AccountModal';
 import { Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { CheckRecord, Finding } from '@/lib/checks/check-store';
+import { useAuth } from '@/lib/firebase/context';
 
 type PageStage = 'checking' | 'result' | 'finding_detail' | 'fix_plan' | 'recheck_confirm';
 
 export default function CheckDetailPage() {
+  const { getIdToken } = useAuth();
   const params = useParams();
   const router = useRouter();
   const id = params?.id as string;
@@ -64,7 +66,14 @@ export default function CheckDetailPage() {
     async function fetchCheck() {
       try {
         setLoading(true);
-        const res = await fetch(`/api/checks/${id}`);
+        const headers: Record<string, string> = {};
+        if (getIdToken) {
+          const token = await getIdToken();
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
+        const res = await fetch(`/api/checks/${id}`, { headers });
         const data = await res.json();
         if (!isMounted) return;
 
@@ -94,7 +103,7 @@ export default function CheckDetailPage() {
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, getIdToken]);
 
   const handleCheckingComplete = (completedCheck: CheckRecord) => {
     setCheck(completedCheck);
@@ -136,9 +145,18 @@ export default function CheckDetailPage() {
   const handleRunRecheck = async () => {
     if (check) {
       try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (getIdToken) {
+          const token = await getIdToken();
+          if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+          }
+        }
         const res = await fetch('/api/checks/start', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({
             url: check.url,
             description: check.description || '',

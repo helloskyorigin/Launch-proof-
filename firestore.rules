@@ -27,7 +27,7 @@ service cloud.firestore {
       }
     }
 
-    // Deny all other access by default
+    // Default deny for all other documents
     match /{document=**} {
       allow read, write: if false;
     }

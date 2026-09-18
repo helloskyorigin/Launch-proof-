@@ -1,6 +1,8 @@
-import { initializeApp, getApps, cert, App } from 'firebase-admin/app';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
+import type { App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, Firestore } from 'firebase-admin/firestore';
+import { getFirestore } from 'firebase-admin/firestore';
+import type { Firestore } from 'firebase-admin/firestore';
 
 let adminApp: App | null = null;
 
@@ -16,6 +18,10 @@ export function getFirebaseAdminApp(): App | null {
 
   if (privateKey) {
     privateKey = privateKey.replace(/\\n/g, '\n');
+    const pemMatch = privateKey.match(/-----BEGIN PRIVATE KEY-----[\s\S]+?-----END PRIVATE KEY-----/);
+    if (pemMatch) {
+      privateKey = pemMatch[0];
+    }
   }
 
   if (projectId && clientEmail && privateKey) {

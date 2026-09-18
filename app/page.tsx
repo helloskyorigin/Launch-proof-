@@ -1,6 +1,8 @@
 'use client';
+/* eslint-disable react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { Header } from '@/components/Header';
 import { SlideDrawer } from '@/components/SlideDrawer';
 import { AccountModal } from '@/components/AccountModal';
@@ -18,7 +20,113 @@ import { GenericViewModal } from '@/components/GenericViewModal';
 import { useAuth } from '@/lib/firebase/context';
 import { getUserChecksFromFirestore, saveUserCheckToFirestore } from '@/lib/firebase/firestore';
 
+function mapChecksToHistoryItems(checks: any[]): any[] {
+  return checks.map((c) => {
+    const name = c.finalUrl || c.url || 'Product Check';
+    const cleanName = name.replace(/^https?:\/\//, '').split('/')[0];
+    
+    let displayStatus: 'Ready' | 'Needs Fix' | 'Draft' = 'Draft';
+    if (c.status === 'completed') {
+      displayStatus = (c.score ?? 80) >= 80 ? 'Ready' : 'Needs Fix';
+    } else if (c.status === 'failed' || c.status === 'reasoning_failed') {
+      displayStatus = 'Needs Fix';
+    } else {
+      displayStatus = 'Draft';
+    }
+
+    return {
+      id: c.id,
+      url: c.url,
+      name: cleanName,
+      date: new Date(c.createdAt || Date.now()).toLocaleDateString('en-US', {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }),
+      score: c.score ?? 0,
+      status: displayStatus,
+      blockersCount: c.blockerCount ?? 0,
+      importantCount: c.importantCount ?? 0,
+    };
+  });
+}
+
+function mapChecksToReports(checks: any[]): any[] {
+  return checks
+    .filter((c) => c.status === 'completed')
+    .map((c) => {
+      const name = c.finalUrl || c.url || 'Product Check';
+      const cleanName = name.replace(/^https?:\/\//, '').split('/')[0];
+      
+      const findings = c.findings || [];
+      const userJourneyFindings = findings.filter((f: any) => f.category === 'User Journey' || f.category === 'user_journey');
+      const mobileFindings = findings.filter((f: any) => f.category === 'Mobile' || f.category === 'mobile');
+      const productClarityFindings = findings.filter((f: any) => f.category === 'Product Clarity' || f.category === 'product_clarity');
+      const trustFindings = findings.filter((f: any) => f.category === 'Trust' || f.category === 'trust' || f.category === 'Trust & Conversion');
+      
+      const mapFinding = (f: any) => ({
+        id: f.id,
+        title: f.title,
+        severity: f.severity === 'minor' ? 'passed' : f.severity,
+        evidence: f.evidence,
+        whyItMatters: f.whyItMatters,
+        recommendedFix: f.fix || f.recommendedFix,
+      });
+
+      return {
+        id: c.id,
+        name: cleanName,
+        url: c.url,
+        productType: c.productType || 'SaaS / Web App',
+        date: new Date(c.createdAt || Date.now()).toLocaleDateString('en-US', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }) + ' · ' + new Date(c.createdAt || Date.now()).toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        score: c.score ?? 80,
+        status: (c.score ?? 80) >= 80 ? 'Ready' : 'Needs Fix',
+        blockersCount: c.blockerCount ?? 0,
+        importantCount: c.importantCount ?? 0,
+        passedCount: 24 - (c.blockerCount ?? 0) - (c.importantCount ?? 0),
+        totalChecks: 24,
+        verdict: c.scoring?.summary || 'Product evaluation completed successfully.',
+        categories: {
+          userJourney: {
+            score: c.breakdown?.userJourney ?? 80,
+            status: (c.breakdown?.userJourney ?? 80) >= 80 ? 'Ready' : 'Needs Fix',
+            findings: userJourneyFindings.map(mapFinding),
+          },
+          mobileCheck: {
+            score: c.breakdown?.mobile ?? 80,
+            status: (c.breakdown?.mobile ?? 80) >= 80 ? 'Ready' : 'Needs Fix',
+            findings: mobileFindings.map(mapFinding),
+          },
+          productClarity: {
+            score: c.breakdown?.productClarity ?? 80,
+            status: (c.breakdown?.productClarity ?? 80) >= 80 ? 'Ready' : 'Needs Fix',
+            findings: productClarityFindings.map(mapFinding),
+          },
+          trustConversion: {
+            score: c.breakdown?.trust ?? 80,
+            status: (c.breakdown?.trust ?? 80) >= 80 ? 'Ready' : 'Needs Fix',
+            findings: trustFindings.map(mapFinding),
+          },
+        },
+        fixPlan: (c.scoring?.fixPlan || []).map((f: any, i: number) => ({
+          step: i + 1,
+          title: f.title,
+          category: f.category,
+          impact: f.severity === 'blocker' ? 'Blocker' : 'Medium',
+        })),
+      };
+    });
+}
+
 export default function LaunchProofApp() {
+  const router = useRouter();
   const { user, profile, status, isConfigured } = useAuth();
 
   // Navigation screen state:
@@ -205,9 +313,11 @@ export default function LaunchProofApp() {
 
           {currentScreen === 'check-history' && (
             <CheckHistoryScreen
-              checks={checks}
+              checks={mapChecksToHistoryItems(checks)}
               onNewCheck={() => setCurrentScreen('new-check')}
-              onSelectCheck={() => setCurrentScreen('reports')}
+              onSelectCheck={(item) => {
+                router.push(`/check/${item.id}`);
+              }}
             />
           )}
 
@@ -215,6 +325,7 @@ export default function LaunchProofApp() {
             <ReportsScreen
               onNewCheck={() => setCurrentScreen('new-check')}
               onNavigate={handleNavigate}
+              reports={mapChecksToReports(checks)}
             />
           )}
 

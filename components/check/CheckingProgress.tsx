@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Globe,
   Loader2,
@@ -11,6 +11,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { CheckRecord, CheckStatus } from '@/lib/checks/check-store';
+import { useAuth } from '@/lib/firebase/context';
 
 export interface CheckingProgressProps {
   checkId?: string;
@@ -31,6 +32,7 @@ export function CheckingProgress({
   onBackToNewCheck,
   onComplete,
 }: CheckingProgressProps) {
+  const { getIdToken } = useAuth();
   const [currentStatus, setCurrentStatus] = useState<CheckStatus>('opening');
   const [checkData, setCheckData] = useState<CheckRecord | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -38,13 +40,22 @@ export function CheckingProgress({
 
   const runStartedRef = useRef(false);
 
-  const startCheckRun = async (id: string) => {
+  const startCheckRun = useCallback(async (id: string) => {
     try {
-      await fetch(`/api/checks/${id}/run`, { method: 'POST' });
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (getIdToken) {
+        const token = await getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+      await fetch(`/api/checks/${id}/run`, { method: 'POST', headers });
     } catch (err) {
       console.error('[CheckingProgress] Failed to trigger check run:', err);
     }
-  };
+  }, [getIdToken]);
 
   // Poll check status
   useEffect(() => {
@@ -63,7 +74,15 @@ export function CheckingProgress({
         if (!isMounted) return;
 
         try {
-          const res = await fetch(`/api/checks/${checkId}`);
+          const headers: Record<string, string> = {};
+          if (getIdToken) {
+            const token = await getIdToken();
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+          }
+
+          const res = await fetch(`/api/checks/${checkId}`, { headers });
           const data = await res.json();
 
           if (data.success && data.check) {
@@ -79,13 +98,13 @@ export function CheckingProgress({
             if (check.status === 'checks_ready') {
               // Trigger reasoning Phase 4 automatically from UI
               if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/reason`, { method: 'POST' }).catch(() => {});
+              fetch(`/api/checks/${checkId}/reason`, { method: 'POST', headers }).catch(() => {});
             }
 
             if (check.status === 'reasoning_complete') {
               // Trigger scoring Phase 5 automatically from UI
               if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/score`, { method: 'POST' }).catch(() => {});
+              fetch(`/api/checks/${checkId}/score`, { method: 'POST', headers }).catch(() => {});
             }
 
             if (check.status === 'completed') {
@@ -113,7 +132,7 @@ export function CheckingProgress({
       isMounted = false;
       if (pollTimer) clearTimeout(pollTimer);
     };
-  }, [checkId, onComplete]);
+  }, [checkId, onComplete, getIdToken, startCheckRun]);
 
   // Handle Retry
   const handleRetry = async () => {
@@ -129,7 +148,15 @@ export function CheckingProgress({
       const poll = async () => {
         if (!isMounted) return;
         try {
-          const res = await fetch(`/api/checks/${checkId}`);
+          const headers: Record<string, string> = {};
+          if (getIdToken) {
+            const token = await getIdToken();
+            if (token) {
+              headers['Authorization'] = `Bearer ${token}`;
+            }
+          }
+
+          const res = await fetch(`/api/checks/${checkId}`, { headers });
           const data = await res.json();
           if (data.success && data.check) {
             setCheckData(data.check);
@@ -143,12 +170,12 @@ export function CheckingProgress({
 
             if (data.check.status === 'checks_ready') {
               if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/reason`, { method: 'POST' }).catch(() => {});
+              fetch(`/api/checks/${checkId}/reason`, { method: 'POST', headers }).catch(() => {});
             }
 
             if (data.check.status === 'reasoning_complete') {
               if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/score`, { method: 'POST' }).catch(() => {});
+              fetch(`/api/checks/${checkId}/score`, { method: 'POST', headers }).catch(() => {});
             }
 
             if (data.check.status === 'completed') {
