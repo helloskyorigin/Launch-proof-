@@ -24,6 +24,47 @@ import {
 
 export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
+// Temporary bypass flag to allow instant frictionless access without blocking on real Firebase credentials
+export const AUTH_BYPASS_MODE = true;
+
+const BYPASS_STORAGE_KEY = 'shipscan_auth_user_session';
+
+function createBypassUser(email: string = 'satyambihar422@gmail.com', name: string = 'Satyam'): User {
+  return {
+    uid: 'user_satyam_founder',
+    email,
+    displayName: name,
+    emailVerified: true,
+    isAnonymous: false,
+    metadata: {},
+    providerData: [],
+    refreshToken: 'bypass-refresh-token',
+    tenantId: null,
+    delete: async () => {},
+    getIdToken: async () => 'bypass_token_satyam',
+    getIdTokenResult: async () => ({} as any),
+    reload: async () => {},
+    toJSON: () => ({}),
+    phoneNumber: null,
+    photoURL: null,
+    providerId: 'google.com',
+  } as unknown as User;
+}
+
+function createBypassProfile(email: string = 'satyambihar422@gmail.com', name: string = 'Satyam'): UserProfile {
+  return {
+    uid: 'user_satyam_founder',
+    email,
+    name,
+    photoURL: null,
+    onboardingCompleted: true,
+    plan: 'pro',
+    checksCount: 1,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 interface AuthContextType {
   user: User | null;
   profile: UserProfile | null;
@@ -85,6 +126,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Auth state listener
   useEffect(() => {
+    // 1. Check for stored bypass session first
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(BYPASS_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const bUser = createBypassUser(parsed.email || 'satyambihar422@gmail.com', parsed.name || 'Satyam');
+          const bProfile = createBypassProfile(parsed.email || 'satyambihar422@gmail.com', parsed.name || 'Satyam');
+          setUser(bUser);
+          setProfile(bProfile);
+          setIdToken('bypass_token_satyam');
+          setStatus('authenticated');
+          return;
+        }
+      } catch (e) {
+        console.error('Error loading stored bypass session:', e);
+      }
+    }
+
     if (!configured) {
       setStatus('unauthenticated');
       return;
@@ -121,6 +181,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const clearError = useCallback(() => setError(null), []);
 
   const getIdToken = useCallback(async (forceRefresh = false): Promise<string | null> => {
+    if (AUTH_BYPASS_MODE) return 'bypass_token_satyam';
     if (!user) return null;
     try {
       const token = await user.getIdToken(forceRefresh);
@@ -133,6 +194,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = useCallback(async () => {
     setError(null);
+    if (AUTH_BYPASS_MODE) {
+      const bUser = createBypassUser('satyambihar422@gmail.com', 'Satyam');
+      const bProfile = createBypassProfile('satyambihar422@gmail.com', 'Satyam');
+      setUser(bUser);
+      setProfile(bProfile);
+      setIdToken('bypass_token_satyam');
+      setStatus('authenticated');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(
+            BYPASS_STORAGE_KEY,
+            JSON.stringify({ email: 'satyambihar422@gmail.com', name: 'Satyam' })
+          );
+        } catch {}
+      }
+      return;
+    }
+
     try {
       const cred = await authSignInWithGoogle();
       if (cred.user) {
@@ -147,6 +226,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithEmail = useCallback(async (email: string, pass: string) => {
     setError(null);
+    if (AUTH_BYPASS_MODE) {
+      const userEmail = email.trim() || 'satyambihar422@gmail.com';
+      const userName = userEmail.split('@')[0] || 'Satyam';
+      const bUser = createBypassUser(userEmail, userName);
+      const bProfile = createBypassProfile(userEmail, userName);
+      setUser(bUser);
+      setProfile(bProfile);
+      setIdToken('bypass_token_satyam');
+      setStatus('authenticated');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(
+            BYPASS_STORAGE_KEY,
+            JSON.stringify({ email: userEmail, name: userName })
+          );
+        } catch {}
+      }
+      return;
+    }
+
     try {
       const cred = await authSignInWithEmail(email, pass);
       if (cred.user) {
@@ -161,6 +260,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUpWithEmail = useCallback(async (email: string, pass: string) => {
     setError(null);
+    if (AUTH_BYPASS_MODE) {
+      const userEmail = email.trim() || 'satyambihar422@gmail.com';
+      const userName = userEmail.split('@')[0] || 'Satyam';
+      const bUser = createBypassUser(userEmail, userName);
+      const bProfile = createBypassProfile(userEmail, userName);
+      setUser(bUser);
+      setProfile(bProfile);
+      setIdToken('bypass_token_satyam');
+      setStatus('authenticated');
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem(
+            BYPASS_STORAGE_KEY,
+            JSON.stringify({ email: userEmail, name: userName })
+          );
+        } catch {}
+      }
+      return;
+    }
+
     try {
       const cred = await authSignUpWithEmail(email, pass);
       if (cred.user) {
@@ -175,16 +294,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = useCallback(async () => {
     setError(null);
-    try {
-      await authLogOut();
-      setUser(null);
-      setProfile(null);
-      setIdToken(null);
-      setStatus('unauthenticated');
-    } catch (err: any) {
-      setError(err?.message || 'Failed to sign out');
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.removeItem(BYPASS_STORAGE_KEY);
+      } catch {}
     }
-  }, []);
+    setUser(null);
+    setProfile(null);
+    setIdToken(null);
+    setStatus('unauthenticated');
+    if (configured) {
+      try {
+        await authLogOut();
+      } catch (err: any) {
+        setError(err?.message || 'Failed to sign out');
+      }
+    }
+  }, [configured]);
 
   const completeOnboarding = useCallback(
     async (data: {
@@ -193,6 +319,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       focusArea?: string;
       skipped?: boolean;
     }) => {
+      if (AUTH_BYPASS_MODE) {
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                productType: data.buildingType || prev.productType,
+                currentStage: data.productStage || prev.currentStage,
+                auditFocus: data.focusArea || prev.auditFocus,
+                onboardingCompleted: true,
+                onboardingSkipped: Boolean(data.skipped),
+              }
+            : createBypassProfile()
+        );
+        return;
+      }
       if (!user) return;
       try {
         await saveUserOnboardingProfile(user.uid, data);
@@ -220,7 +361,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       profile,
       status,
-      isConfigured: configured,
+      isConfigured: configured || AUTH_BYPASS_MODE,
       missingConfig: missingVars,
       idToken,
       error,

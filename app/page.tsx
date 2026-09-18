@@ -238,10 +238,29 @@ export default function LaunchProofApp() {
 
     if (status === 'authenticated' && user?.uid) {
       let isMounted = true;
+
+      // Check localStorage for persisted checks
+      if (typeof window !== 'undefined') {
+        try {
+          const local = localStorage.getItem('shipscan_user_checks');
+          if (local) {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setChecks(parsed);
+            }
+          }
+        } catch {}
+      }
+
       getUserChecksFromFirestore(user.uid)
         .then((items) => {
           if (isMounted && items.length > 0) {
             setChecks(items);
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('shipscan_user_checks', JSON.stringify(items));
+              } catch {}
+            }
           }
         })
         .catch((err) => {
@@ -314,7 +333,6 @@ export default function LaunchProofApp() {
           setAuthMode(mode);
           setCurrentScreen('auth');
         }}
-        onTryDemo={handleEnterDemo}
         onNavigateToOnboarding={() => {
           if (status === 'authenticated') {
             setCurrentScreen('onboarding');
@@ -348,10 +366,9 @@ export default function LaunchProofApp() {
       <AuthScreen
         initialMode={authMode}
         onBackToLanding={() => setCurrentScreen('landing')}
-        onTryDemo={handleEnterDemo}
         onSuccess={(userType) => {
           setIsDemoMode(false);
-          if (userType === 'new' || (profile && !profile.onboardingCompleted)) {
+          if (userType === 'new' && profile && !profile.onboardingCompleted) {
             setCurrentScreen('onboarding');
           } else {
             setCurrentScreen(initialProductUrl ? 'new-check' : 'home');
@@ -502,7 +519,15 @@ export default function LaunchProofApp() {
               onContinueDemo={() => setCurrentScreen('demo-result')}
               onBack={() => setCurrentScreen(isDemoMode ? 'demo-result' : 'home')}
               onCheckCompleted={(newCheck) => {
-                setChecks((prev) => [newCheck, ...prev]);
+                setChecks((prev) => {
+                  const updated = [newCheck, ...prev];
+                  if (typeof window !== 'undefined') {
+                    try {
+                      localStorage.setItem('shipscan_user_checks', JSON.stringify(updated));
+                    } catch {}
+                  }
+                  return updated;
+                });
                 if (user?.uid) {
                   saveUserCheckToFirestore(user.uid, newCheck).catch((err) => {
                     console.error('[ShipScanApp] Failed to save check to Firestore:', err);

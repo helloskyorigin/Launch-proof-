@@ -2,6 +2,8 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/firebase/context';
 import {
   ArrowLeft,
   ArrowRight,
@@ -14,8 +16,11 @@ import {
   Maximize2,
   CameraOff,
   Layers,
+  RotateCcw,
+  Loader2,
+  Sparkles,
 } from 'lucide-react';
-import { CheckRecord, Finding, FindingSeverity } from '@/lib/checks/check-store';
+import { CheckRecord, Finding, FindingSeverity, DeterministicCheckResult } from '@/lib/checks/check-store';
 import { EvidenceViewModal } from './EvidenceViewModal';
 
 export interface CheckResultViewProps {
@@ -66,6 +71,119 @@ function extractFindingPath(finding: Finding, siteUrl?: string): string | null {
   }
 
   return null;
+}
+
+// Convert finding into a concise, developer-friendly launch checklist title
+function toChecklistTitle(finding: Finding): string {
+  const title = (finding.title || '').trim();
+  if (!title) return 'Fix identified issue';
+
+  const actionVerbs = [
+    'fix',
+    'add',
+    'resolve',
+    'clarify',
+    'update',
+    'prevent',
+    'remove',
+    'ensure',
+    'show',
+    'provide',
+    'replace',
+    'repair',
+    'correct',
+    'simplify',
+  ];
+  const firstWord = title.split(' ')[0]?.toLowerCase();
+  if (actionVerbs.includes(firstWord)) {
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  }
+
+  if (/^missing\s+/i.test(title)) {
+    return title.replace(/^missing\s+/i, 'Add missing ');
+  }
+  if (/doesn't\s+|does\s+not\s+|fails\s+to\s+/i.test(title)) {
+    const cleaned = title
+      .replace(/doesn't\s+complete|does\s+not\s+complete|fails\s+to\s+complete/i, 'signup failure')
+      .replace(/doesn't\s+work|does\s+not\s+work|fails\s+to\s+work/i, 'issue')
+      .replace(/doesn't|does not|fails to/i, '');
+    return `Fix ${cleaned.trim()}`;
+  }
+  if (/unclear|confusing/i.test(title)) {
+    const actionPart = title.replace(/\s+is\s+unclear|\s+is\s+confusing/i, '').trim();
+    return `Clarify ${actionPart.toLowerCase().startsWith('the') ? actionPart : `the ${actionPart}`} action`;
+  }
+
+  const cleanTitle = title.replace(/^[a-z]/, (c) => c.toLowerCase());
+  return `Fix ${cleanTitle}`;
+}
+
+// Map deterministic check result into a concise, human-readable passed check title
+function getPassedCheckTitle(check: DeterministicCheckResult): string {
+  const customTitleMap: Record<string, string> = {
+    // Product Clarity
+    product_clarity_title: 'Page title present',
+    product_clarity_meta_description: 'Meta description configured',
+    product_clarity_main_heading: 'Main heading structure detected',
+    product_clarity_empty_page: 'Content volume verified',
+    product_clarity_pricing_page: 'Pricing section located',
+    product_clarity_pricing_clarity: 'Pricing section located',
+    product_clarity_lead_paragraph: 'Lead value proposition present',
+    product_clarity_tagline_length: 'Tagline length optimal',
+
+    // User Journey
+    user_journey_navigation: 'Navigation structure functional',
+    user_journey_links: 'Interactive links present',
+    user_journey_buttons: 'Action buttons detected',
+    user_journey_forms: 'Lead or sign-up forms active',
+    user_journey_primary_actions: 'Primary call-to-action active',
+    user_journey_action_buttons: 'Primary CTA buttons active',
+    user_journey_form_inputs: 'Form input fields active',
+    user_journey_internal_links: 'Internal anchor links valid',
+    user_journey_broken_link_anchors: 'No broken link placeholders',
+
+    // Mobile
+    mobile_page_loaded: 'Mobile viewport loads successfully',
+    mobile_screenshot_exists: 'Mobile rendering verified',
+    mobile_horizontal_overflow: 'No horizontal overflow on mobile',
+    mobile_visible_content: 'Mobile content rendered cleanly',
+    mobile_viewport_tag: 'Mobile viewport tag configured',
+    mobile_text_scaling: 'Mobile text scaling readable',
+    mobile_interactive_sizing: 'Touch targets meet minimum size',
+
+    // Trust
+    trust_https_used: 'HTTPS security enabled',
+    trust_privacy_or_terms: 'Privacy policy and terms available',
+    trust_social_proof: 'Social proof signals detected',
+    trust_contact_details: 'Contact information available',
+
+    // Technical
+    technical_http_status: 'HTTP 200 server response received',
+    technical_http_status_ok: 'HTTP 200 server response received',
+    technical_response_time: 'Server response time under threshold',
+    technical_page_errors: 'No unhandled script crashes',
+    technical_page_crashes: 'No unhandled script crashes',
+    technical_console_errors: 'Console error-free execution',
+    technical_failed_requests: 'No critical failed network requests',
+  };
+
+  if (customTitleMap[check.id]) {
+    return customTitleMap[check.id];
+  }
+
+  // If evidence has a short friendly sentence (e.g. "Title tag found: ...")
+  if (Array.isArray(check.evidence) && check.evidence[0]) {
+    const ev = check.evidence[0].trim();
+    if (ev.length > 4 && ev.length < 50 && !ev.includes('\n') && !ev.includes('{')) {
+      return ev;
+    }
+  }
+
+  // Fallback: format check id cleanly
+  return check.id
+    .replace(/^(product_clarity_|user_journey_|mobile_|trust_|technical_)/, '')
+    .replace(/_/g, ' ')
+    .replace(/^[a-z]/, (c) => c.toUpperCase());
 }
 
 // Derive journey steps using ONLY real data recorded in the check record
@@ -273,16 +391,43 @@ export function CheckResultView({
   checkData,
   onBack,
   onSelectFinding,
+  onViewFixPlan,
+  onStartRecheck,
   isDemoMode = false,
   onExitDemoToAuth,
   onNewCheck,
 }: CheckResultViewProps) {
+  const router = useRouter();
+  const { getIdToken } = useAuth();
+
   // Phase 3 State (Hooks must be called unconditionally at top of component)
   const [selectedProofFinding, setSelectedProofFinding] = useState<Finding | null>(null);
   const [showJourneyModal, setShowJourneyModal] = useState<boolean>(false);
   const [showEvidenceModal, setShowEvidenceModal] = useState<boolean>(false);
   const [showExpandedScreenshot, setShowExpandedScreenshot] = useState<boolean>(false);
   const [technicalDetailsOpen, setTechnicalDetailsOpen] = useState<boolean>(false);
+
+  // Phase 4 State
+  const [fixDetailFinding, setFixDetailFinding] = useState<Finding | null>(null);
+  const [checkedTaskIds, setCheckedTaskIds] = useState<Set<string>>(new Set());
+  const [recheckStatus, setRecheckStatus] = useState<'idle' | 'starting' | 'error'>('idle');
+  const [recheckErrorMessage, setRecheckErrorMessage] = useState<string | null>(null);
+  const [showDemoAuthModal, setShowDemoAuthModal] = useState<boolean>(false);
+
+  // Phase 5 State
+  const [showAllPassedChecks, setShowAllPassedChecks] = useState<boolean>(false);
+
+  const toggleChecklistTask = (taskId: string) => {
+    setCheckedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
+      }
+      return next;
+    });
+  };
 
   // Normalize check record from existing real data
   const record = (check || checkData || {}) as CheckRecord;
@@ -436,6 +581,81 @@ export function CheckResultView({
   const topFindings = sortedFindings.slice(0, 3);
   const totalFindingsCount = sortedFindings.length;
   const hasMoreThanThree = totalFindingsCount > 3;
+
+  // Phase 4: Actionable findings and launch checklist items (Blocker + Important only)
+  const actionableFindings = sortedFindings.filter(
+    (f) => f.severity === 'blocker' || f.severity === 'important'
+  );
+  const minorFindings = sortedFindings.filter((f) => f.severity === 'minor');
+  const fixCount = actionableFindings.length;
+  const priorityFindings =
+    actionableFindings.length > 0
+      ? actionableFindings.slice(0, 3)
+      : sortedFindings.slice(0, 3);
+
+  // Phase 5: Deterministic passed checks (Strictly status === 'pass')
+  // Unknown, warning, fail, not_detected, and not_applicable are strictly excluded
+  const rawChecks: DeterministicCheckResult[] = Array.isArray(record.checks)
+    ? record.checks
+    : [];
+  const passedChecks = rawChecks.filter((c) => c.status === 'pass');
+  const passedCount = passedChecks.length;
+
+  // Phase 4: Real re-check handler
+  const handleRunRecheck = async () => {
+    if (isDemoMode) {
+      setShowDemoAuthModal(true);
+      return;
+    }
+
+    const targetUrl = record.url || record.finalUrl;
+    if (!targetUrl) {
+      if (onStartRecheck) {
+        onStartRecheck();
+      } else if (onNewCheck) {
+        onNewCheck();
+      }
+      return;
+    }
+
+    setRecheckStatus('starting');
+    setRecheckErrorMessage(null);
+
+    try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (getIdToken) {
+        const token = await getIdToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+      }
+
+      const res = await fetch('/api/checks/start', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          url: targetUrl,
+          description: record.description || '',
+          productType: record.productType || '',
+          parentCheckId: record.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success && data.check?.id) {
+        router.push(`/check/${data.check.id}`);
+        return;
+      } else {
+        setRecheckStatus('error');
+        setRecheckErrorMessage(data?.error?.message || "Couldn't run the check.");
+      }
+    } catch {
+      setRecheckStatus('error');
+      setRecheckErrorMessage("Couldn't run the check.");
+    }
+  };
 
   // Derived real journey steps
   const journeySteps = deriveJourneySteps(record, cleanUrl);
@@ -1087,6 +1307,487 @@ export function CheckResultView({
             </div>
           </div>
         </section>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            5. RECOMMENDED FIX
+            Connect each real finding to its existing fix field
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <section className="w-full mt-7" aria-label="Recommended fixes">
+          <div className="mb-3">
+            <h2 className="text-[13px] font-bold text-[#111827] uppercase tracking-wider">
+              RECOMMENDED FIX
+            </h2>
+            <p className="text-[13px] text-[#667085] mt-0.5">
+              Direct developer action for each priority issue.
+            </p>
+          </div>
+
+          {priorityFindings.length === 0 ? (
+            <div className="w-full bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs text-center py-6">
+              <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2 border border-emerald-200">
+                <Check className="w-4 h-4 stroke-[2.5]" />
+              </div>
+              <p className="text-sm font-semibold text-[#111827]">
+                No fixes required
+              </p>
+              <p className="text-xs text-[#667085] mt-0.5">
+                All automated checks passed with no detected blockers or issues.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3.5">
+              {priorityFindings.map((finding, idx) => {
+                const rawFix = finding.fix || (finding as any).recommendedFix;
+                const hasFix = Boolean(rawFix && typeof rawFix === 'string' && rawFix.trim().length > 0);
+                const fixText = hasFix
+                  ? rawFix.trim()
+                  : "An exact fix wasn't provided for this finding.";
+
+                return (
+                  <div
+                    key={finding.id || `priority-fix-${idx}`}
+                    className="w-full bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs flex flex-col"
+                  >
+                    {/* Finding Title & Severity Badge */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border shrink-0 ${
+                            finding.severity === 'blocker'
+                              ? 'bg-rose-50 text-rose-700 border-rose-200/80'
+                              : finding.severity === 'important'
+                              ? 'bg-amber-50 text-amber-800 border-amber-200/80'
+                              : 'bg-slate-50 text-slate-700 border-slate-200/80'
+                          }`}
+                        >
+                          {finding.severity}
+                        </span>
+                        <span className="text-xs text-[#667085] font-medium truncate">
+                          {finding.category}
+                        </span>
+                      </div>
+                    </div>
+
+                    <h3 className="text-[14px] sm:text-[15px] font-semibold text-[#111827] leading-snug mb-2.5">
+                      {finding.title}
+                    </h3>
+
+                    {/* RECOMMENDED FIX Header + Exact Fix Text */}
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                        RECOMMENDED FIX
+                      </span>
+                      <p className="text-[13px] text-[#111827] font-medium leading-relaxed">
+                        {fixText}
+                      </p>
+                    </div>
+
+                    {/* See fix details secondary action */}
+                    <div className="mt-3 pt-2 border-t border-[#F1F3F5] flex items-center justify-between">
+                      <button
+                        type="button"
+                        id={`btn-see-fix-details-${finding.id || idx}`}
+                        onClick={() => setFixDetailFinding(finding)}
+                        className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#2563EB] hover:text-blue-700 min-h-[44px] -ml-1 px-1 py-1 rounded-lg cursor-pointer active:opacity-80 transition-colors focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                      >
+                        <span>See fix details</span>
+                        <ArrowRight className="w-3.5 h-3.5 stroke-[2.2]" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            6. BEFORE YOU LAUNCH
+            Checklist generated from blocker/important findings
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <section className="w-full mt-7" aria-label="Before you launch checklist">
+          <div className="mb-3">
+            <h2 className="text-[13px] font-bold text-[#111827] uppercase tracking-wider">
+              BEFORE YOU LAUNCH
+            </h2>
+            <p className="text-[13px] text-[#667085] mt-0.5">
+              Action checklist derived from verified check findings.
+            </p>
+          </div>
+
+          <div className="w-full bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs flex flex-col">
+            {actionableFindings.length === 0 ? (
+              <div className="py-4 text-center">
+                <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto mb-2 border border-emerald-200">
+                  <Check className="w-5 h-5 stroke-[2.5]" />
+                </div>
+                <p className="text-[14px] font-semibold text-[#111827]">
+                  {minorFindings.length > 0
+                    ? 'Your product has no critical launch issues. A few minor improvements are available.'
+                    : 'Nothing critical to fix before launch.'}
+                </p>
+                {minorFindings.length > 0 && (
+                  <p className="text-xs text-[#667085] mt-1">
+                    {minorFindings.length} minor {minorFindings.length === 1 ? 'improvement' : 'improvements'} identified in findings list.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1 mb-3">
+                  {actionableFindings.map((finding, idx) => {
+                    const taskId = finding.id || `act-task-${idx}`;
+                    const isDone = checkedTaskIds.has(taskId);
+                    const checklistTitle = toChecklistTitle(finding);
+                    return (
+                      <label
+                        key={taskId}
+                        className="flex items-start gap-3 p-2.5 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer border border-transparent hover:border-slate-200/60 select-none"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isDone}
+                          onChange={() => toggleChecklistTask(taskId)}
+                          className="w-4 h-4 mt-0.5 rounded border-slate-300 text-[#2563EB] focus:ring-[#2563EB] cursor-pointer"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <span
+                            className={`text-[13px] sm:text-[14px] leading-snug block ${
+                              isDone
+                                ? 'line-through text-[#9CA3AF]'
+                                : 'text-[#111827] font-medium'
+                            }`}
+                          >
+                            {checklistTitle}
+                          </span>
+                          <span className="text-[11px] text-[#667085] mt-0.5 block">
+                            {finding.severity === 'blocker' ? 'Blocker' : 'Important'} · {finding.category}
+                          </span>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="pt-3 border-t border-[#F1F3F5] flex items-center justify-between text-xs text-[#667085]">
+                  <span className="font-semibold text-[#111827]">
+                    {fixCount} {fixCount === 1 ? 'thing to fix' : 'things to fix'}
+                  </span>
+                  {checkedTaskIds.size > 0 && (
+                    <span className="text-emerald-700 font-medium">
+                      {checkedTaskIds.size} of {fixCount} addressed
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            7. ALREADY WORKING (Phase 5)
+            Show only real passed checks (status === 'pass')
+            Omit completely if passedCount === 0
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {passedCount > 0 && (
+          <section className="w-full mt-7" aria-label="Already working checks">
+            <div className="mb-3">
+              <h2 className="text-[13px] font-bold text-[#111827] uppercase tracking-wider">
+                ALREADY WORKING
+              </h2>
+              <p className="text-[13px] text-[#667085] mt-0.5">
+                Verified functional areas that passed automated launch checks.
+              </p>
+            </div>
+
+            <div className="w-full bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] p-4 sm:p-5 shadow-xs flex flex-col">
+              <div className="space-y-2.5">
+                {(showAllPassedChecks ? passedChecks : passedChecks.slice(0, 5)).map((chk, idx) => {
+                  const checkTitle = getPassedCheckTitle(chk);
+                  return (
+                    <div
+                      key={chk.id || `passed-check-${idx}`}
+                      className="flex items-start gap-2.5 text-[13px] sm:text-[14px] text-[#111827]"
+                    >
+                      <div className="w-5 h-5 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5 border border-emerald-200/80">
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-medium text-[#111827] leading-snug block">
+                          {checkTitle}
+                        </span>
+                        {chk.evidence && chk.evidence[0] && chk.evidence[0] !== checkTitle && (
+                          <span className="text-[11px] text-[#667085] block truncate mt-0.5 font-mono">
+                            {chk.evidence[0]}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {passedChecks.length > 5 && (
+                <div className="mt-3 pt-2.5 border-t border-[#F1F3F5]">
+                  <button
+                    type="button"
+                    onClick={() => setShowAllPassedChecks(!showAllPassedChecks)}
+                    className="text-[12px] font-semibold text-[#2563EB] hover:text-blue-700 min-h-[44px] -ml-1 px-1 py-1 rounded-lg cursor-pointer transition-colors flex items-center gap-1 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#2563EB]"
+                  >
+                    <span>
+                      {showAllPassedChecks
+                        ? 'Show fewer passed checks'
+                        : `Show all ${passedCount} passed checks`}
+                    </span>
+                    {showAllPassedChecks ? (
+                      <ChevronUp className="w-3.5 h-3.5" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              )}
+
+              <div className="pt-3 mt-3 border-t border-[#F1F3F5] flex items-center justify-between text-xs text-[#667085]">
+                <span className="font-semibold text-emerald-700">
+                  {passedCount} {passedCount === 1 ? 'check passed' : 'checks passed'}
+                </span>
+                <span className="text-[11px] text-[#667085]">
+                  Deterministic verification
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            8. RUN SHIPSCAN AGAIN
+            Primary CTA using existing real check pipeline
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        <section className="w-full mt-7" aria-label="Recheck action">
+          {recheckErrorMessage && (
+            <div
+              role="alert"
+              className="w-full mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between gap-2"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span className="font-medium truncate">Couldn&apos;t run the check.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRunRecheck}
+                className="font-semibold underline hover:text-rose-900 cursor-pointer min-h-[44px] px-2 shrink-0 flex items-center"
+              >
+                Try again
+              </button>
+            </div>
+          )}
+
+          <button
+            type="button"
+            id="btn-run-shipscan-again"
+            disabled={recheckStatus === 'starting'}
+            onClick={handleRunRecheck}
+            className="w-full min-h-[48px] py-3.5 px-6 rounded-xl bg-[#2563EB] hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold text-[14px] sm:text-[15px] shadow-xs active:scale-[0.99] transition-all cursor-pointer flex items-center justify-center gap-2 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-[#2563EB] focus-visible:ring-offset-2"
+          >
+            {recheckStatus === 'starting' ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
+                <span>Running a fresh ShipScan check...</span>
+              </>
+            ) : (
+              <>
+                <RotateCcw className="w-4 h-4 stroke-[2.5]" />
+                <span>RUN SHIPSCAN AGAIN</span>
+              </>
+            )}
+          </button>
+        </section>
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            FIX DETAILS MODAL (Section 4)
+            Hierarchy: Problem -> Why -> Proof -> Fix
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {fixDetailFinding && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fix-details-modal-title"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+          >
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-150">
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] font-bold text-[#667085] uppercase tracking-wider block">
+                    FIX DETAILS
+                  </span>
+                  <h3
+                    id="fix-details-modal-title"
+                    className="text-base font-bold text-[#111827] mt-0.5"
+                  >
+                    Recommended Action
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFixDetailFinding(null)}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 cursor-pointer transition-colors"
+                  aria-label="Close fix details"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Body: Problem -> Why -> Proof -> Fix */}
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs sm:text-sm">
+                {/* 1. Problem */}
+                <div>
+                  <span className="text-[11px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                    Problem
+                  </span>
+                  <div className="flex items-start gap-2">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border shrink-0 mt-0.5 ${
+                        fixDetailFinding.severity === 'blocker'
+                          ? 'bg-rose-50 text-rose-700 border-rose-200/80'
+                          : fixDetailFinding.severity === 'important'
+                          ? 'bg-amber-50 text-amber-800 border-amber-200/80'
+                          : 'bg-slate-50 text-slate-700 border-slate-200/80'
+                      }`}
+                    >
+                      {fixDetailFinding.severity}
+                    </span>
+                    <p className="font-semibold text-[#111827] leading-snug">
+                      {fixDetailFinding.title}
+                    </p>
+                  </div>
+                </div>
+
+                {/* 2. Why it matters */}
+                <div>
+                  <span className="text-[11px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                    Why it matters
+                  </span>
+                  <p className="text-[#4B5563] leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200/70">
+                    {fixDetailFinding.whyItMatters ||
+                      'Directly impacts the first user experience and task completion.'}
+                  </p>
+                </div>
+
+                {/* 3. Proof */}
+                <div>
+                  <span className="text-[11px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                    Proof
+                  </span>
+                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/70 space-y-2">
+                    {fixDetailFinding.evidence ? (
+                      <p className="text-[12px] text-[#374151] font-mono whitespace-pre-wrap break-all leading-relaxed">
+                        {fixDetailFinding.evidence}
+                      </p>
+                    ) : (
+                      <p className="text-[12px] text-[#667085] italic">
+                        Recorded during Playwright automated browser test.
+                      </p>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = fixDetailFinding;
+                        setFixDetailFinding(null);
+                        setSelectedProofFinding(target);
+                        setShowEvidenceModal(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#2563EB] hover:text-blue-700 cursor-pointer min-h-[44px] py-1 pt-2"
+                    >
+                      <span>View evidence</span>
+                      <ArrowRight className="w-3.5 h-3.5 stroke-[2.2]" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 4. Recommended fix */}
+                <div>
+                  <span className="text-[11px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                    Recommended fix
+                  </span>
+                  <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-200/70 text-[#1E3A8A]">
+                    <p className="font-medium leading-relaxed text-[13px]">
+                      {fixDetailFinding.fix && fixDetailFinding.fix.trim()
+                        ? fixDetailFinding.fix.trim()
+                        : "An exact fix wasn't provided for this finding."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="p-3 sm:p-4 border-t border-slate-200 bg-slate-50 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setFixDetailFinding(null)}
+                  className="min-h-[44px] px-5 py-2 rounded-xl bg-[#111827] hover:bg-slate-800 text-white text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+            DEMO AUTH MODAL (Section 18)
+            Prompt user to sign in before running real pipeline
+           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
+        {showDemoAuthModal && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="demo-auth-prompt-title"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150"
+          >
+            <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-200 p-5 sm:p-6 text-center animate-in zoom-in-95 duration-150">
+              <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#2563EB] flex items-center justify-center mx-auto mb-3">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <span className="text-[11px] font-bold text-[#667085] uppercase tracking-wider block mb-1">
+                Demo Mode
+              </span>
+              <h3
+                id="demo-auth-prompt-title"
+                className="text-base font-bold text-[#111827] mb-2"
+              >
+                Sign in to run a real ShipScan check.
+              </h3>
+              <p className="text-xs text-[#667085] mb-5 leading-relaxed">
+                Demo mode results are pre-computed previews. Sign in with your account to audit your live website with full Playwright browser runs and AI evaluation.
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowDemoAuthModal(false);
+                    if (onExitDemoToAuth) {
+                      onExitDemoToAuth();
+                    }
+                  }}
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-[#2563EB] hover:bg-blue-700 text-white text-xs font-semibold cursor-pointer active:scale-98 transition-all"
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowDemoAuthModal(false)}
+                  className="w-full min-h-[44px] py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#374151] text-xs font-semibold cursor-pointer transition-all"
+                >
+                  Stay in Demo
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             5. JOURNEY DETAIL MODAL (Section 6)

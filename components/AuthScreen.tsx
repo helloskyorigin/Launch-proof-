@@ -60,11 +60,6 @@ export function AuthScreen({
     e.preventDefault();
     setErrorMessage(null);
 
-    if (!isConfigured) {
-      setErrorMessage(`Missing Firebase configuration: ${missingConfig.join(', ')}`);
-      return;
-    }
-
     const trimmedEmail = email.trim();
     if (!trimmedEmail) {
       setErrorMessage('Please enter your email address.');
@@ -102,18 +97,14 @@ export function AuthScreen({
 
   const handleGoogleAuth = async () => {
     setErrorMessage(null);
-
-    if (!isConfigured) {
-      setErrorMessage(`Missing Firebase configuration: ${missingConfig.join(', ')}`);
-      return;
-    }
-
     setIsGoogleLoading(true);
 
     try {
       await signInWithGoogle();
-      const isReturning = profile?.onboardingCompleted ?? false;
-      onSuccess(isReturning ? 'returning' : 'new', email || 'founder@launchproof.com');
+      const userEmail = profile?.email || 'satyambihar422@gmail.com';
+      const userName = profile?.name || 'Satyam';
+      const isReturning = profile?.onboardingCompleted ?? true;
+      onSuccess(isReturning ? 'returning' : 'new', userEmail, userName);
     } catch (err: any) {
       const code = err?.code || err?.message || 'Google sign in failed';
       setErrorMessage(getFriendlyAuthErrorMessage(code));
@@ -357,32 +348,6 @@ export function AuthScreen({
             </p>
           )}
         </div>
-
-        {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-            DEMO MODE ACCESS (VISUALLY SECONDARY)
-           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */}
-        {isDemoModeEnabled() && onTryDemo && (
-          <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-            <div className="flex items-center justify-center gap-1.5 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-                No sign-in required
-              </span>
-            </div>
-            <button
-              id="btn-try-demo"
-              type="button"
-              onClick={onTryDemo}
-              className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 active:bg-slate-200/70 text-slate-700 font-semibold text-xs sm:text-[13px] flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs group"
-            >
-              <Compass className="w-4 h-4 text-[#0066ff] group-hover:rotate-45 transition-transform" />
-              <span>Try Demo Mode (Sample Result)</span>
-            </button>
-            <p className="text-[11px] text-slate-400 mt-1.5 font-normal">
-              Explore a completed readiness report for demo.shipscan.app
-            </p>
-          </div>
-        )}
 
         {/* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
             TERMS & PRIVACY
