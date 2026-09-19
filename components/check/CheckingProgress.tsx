@@ -9,6 +9,7 @@ import {
   Circle,
   RotateCcw,
   ArrowLeft,
+  Compass,
 } from 'lucide-react';
 import { CheckRecord, CheckStatus } from '@/lib/checks/check-store';
 import { useAuth } from '@/lib/firebase/context';
@@ -33,7 +34,7 @@ export function CheckingProgress({
   onComplete,
 }: CheckingProgressProps) {
   const { getIdToken } = useAuth();
-  const [currentStatus, setCurrentStatus] = useState<CheckStatus>('opening');
+  const [currentStatus, setCurrentStatus] = useState<CheckStatus>('validating');
   const [checkData, setCheckData] = useState<CheckRecord | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -91,27 +92,15 @@ export function CheckingProgress({
             setCurrentStatus(check.status);
 
             if (check.status === 'failed' || check.status === 'reasoning_failed') {
-              setErrorMsg(check.error || check.aiError || "We couldn't complete the website check. Please try again.");
+              setErrorMsg(check.error || "We couldn't finish loading the target website.");
               return; // Stop polling on failure
             }
 
-            if (check.status === 'checks_ready') {
-              // Trigger reasoning Phase 4 automatically from UI
-              if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/reason`, { method: 'POST', headers }).catch(() => {});
-            }
-
-            if (check.status === 'reasoning_complete') {
-              // Trigger scoring Phase 5 automatically from UI
-              if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/score`, { method: 'POST', headers }).catch(() => {});
-            }
-
-            if (check.status === 'completed') {
+            if (check.status === 'discovery_ready' || check.status === 'completed') {
               if (onComplete) {
                 onComplete(check);
               }
-              return; // Stop polling on completed
+              return; // Stop polling on discovery_ready or completed
             }
           }
         } catch {
@@ -119,7 +108,7 @@ export function CheckingProgress({
         }
 
         if (isMounted) {
-          pollTimer = setTimeout(poll, 1200);
+          pollTimer = setTimeout(poll, 1000);
         }
       };
 
@@ -139,11 +128,10 @@ export function CheckingProgress({
     if (!checkId) return;
     setIsRetrying(true);
     setErrorMsg(null);
-    setCurrentStatus('opening');
+    setCurrentStatus('validating');
 
     try {
       await startCheckRun(checkId);
-      // Restart polling
       let isMounted = true;
       const poll = async () => {
         if (!isMounted) return;
@@ -162,23 +150,13 @@ export function CheckingProgress({
             setCheckData(data.check);
             setCurrentStatus(data.check.status);
 
-            if (data.check.status === 'failed' || data.check.status === 'reasoning_failed') {
-              setErrorMsg(data.check.error || data.check.aiError || "We couldn't complete the website check.");
+            if (data.check.status === 'failed') {
+              setErrorMsg(data.check.error || "We couldn't finish loading the target website.");
               setIsRetrying(false);
               return;
             }
 
-            if (data.check.status === 'checks_ready') {
-              if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/reason`, { method: 'POST', headers }).catch(() => {});
-            }
-
-            if (data.check.status === 'reasoning_complete') {
-              if (!isMounted) return;
-              fetch(`/api/checks/${checkId}/score`, { method: 'POST', headers }).catch(() => {});
-            }
-
-            if (data.check.status === 'completed') {
+            if (data.check.status === 'discovery_ready' || data.check.status === 'completed') {
               setIsRetrying(false);
               if (onComplete) onComplete(data.check);
               return;
@@ -187,11 +165,11 @@ export function CheckingProgress({
         } catch {
           // Ignore
         }
-        if (isMounted) setTimeout(poll, 1200);
+        if (isMounted) setTimeout(poll, 1000);
       };
       poll();
     } catch {
-      setErrorMsg('Failed to restart check.');
+      setErrorMsg("We couldn't finish loading the target website.");
       setIsRetrying(false);
     }
   };
@@ -204,106 +182,97 @@ export function CheckingProgress({
     url ||
     'Target Website';
 
-  // Real Status Descriptions (No fake percentages)
+  // User-facing Status Descriptions
   const getStatusDetails = (status: CheckStatus) => {
     switch (status) {
       case 'created':
-        return {
-          title: 'Preparing check...',
-          desc: 'Initializing check session and security parameters.',
-        };
       case 'validating':
+      case 'ready_for_analysis':
         return {
           title: 'Validating website address...',
-          desc: 'Verifying DNS resolution and network accessibility.',
+          desc: 'Verifying network accessibility and security requirements.',
         };
       case 'opening':
         return {
-          title: 'Launching headless browser...',
-          desc: 'Opening Playwright browser instance and navigating to target.',
+          title: 'Opening website...',
+          desc: 'Loading page and establishing secure connection.',
+        };
+      case 'discovering':
+        return {
+          title: 'Mapping your experience...',
+          desc: 'Understanding structure, buttons, navigation, and key user actions.',
+        };
+      case 'discovery_ready':
+        return {
+          title: 'Website Understood!',
+          desc: 'Mapped interactive features and selected relevant tests.',
         };
       case 'checking_desktop':
-        return {
-          title: 'Inspecting desktop page layout...',
-          desc: 'Evaluating navigation, DOM structure, headers, and console signals.',
-        };
       case 'checking_mobile':
-        return {
-          title: 'Testing mobile responsiveness...',
-          desc: 'Checking iPhone viewport scaling, tap targets, and horizontal overflow.',
-        };
       case 'collecting_evidence':
         return {
-          title: 'Collecting DOM & layout evidence...',
-          desc: 'Cataloging headlines, forms, interactive buttons, and assets.',
-        };
-      case 'evidence_ready':
-        return {
-          title: 'Evidence collection complete...',
-          desc: 'Preparing raw evidence for deterministic evaluation.',
+          title: 'Testing your experience...',
+          desc: 'Checking important actions and responsive layout across viewports.',
         };
       case 'checks_ready':
-        return {
-          title: 'Running deterministic check rules...',
-          desc: 'Evaluating 25+ automated UX, product clarity, and technical rules.',
-        };
       case 'reasoning':
-      case 'findings_ready':
+      case 'reasoning_complete':
         return {
-          title: 'Synthesizing first-user findings with AI...',
-          desc: 'Analyzing user journey friction, clarity, and generating exact fixes.',
+          title: 'Preparing your report...',
+          desc: 'Synthesizing evidence and computing launch readiness.',
         };
       case 'completed':
         return {
-          title: 'Check completed!',
-          desc: 'Readiness score and recommendations calculated.',
+          title: 'Audit Complete!',
+          desc: 'Your launch readiness evaluation and proof are ready.',
         };
       case 'failed':
+      case 'reasoning_failed':
         return {
-          title: 'Check failed',
-          desc: errorMsg || 'Encountered an issue verifying the website.',
+          title: "Couldn't complete testing",
+          desc: errorMsg || "We couldn't finish loading the target website.",
         };
       default:
         return {
-          title: 'Checking website...',
-          desc: 'Inspecting page content and technical signals.',
+          title: 'Testing your product...',
+          desc: 'Understanding website structure and interactive features.',
         };
     }
   };
 
   const { title: statusTitle, desc: statusDesc } = getStatusDetails(currentStatus);
 
-  // Pipeline step tracker
+  // User-facing progress tracker steps
   const steps = [
     {
       id: 'step_validation',
-      label: 'Target Validation',
-      isDone: ['opening', 'checking_desktop', 'checking_mobile', 'collecting_evidence', 'evidence_ready', 'checks_ready', 'reasoning', 'findings_ready', 'completed', 'reasoning_complete'].includes(currentStatus),
-      isActive: ['created', 'validating'].includes(currentStatus),
+      label: 'Validating address',
+      isDone: ['opening', 'discovering', 'discovery_ready', 'checking_desktop', 'checking_mobile', 'collecting_evidence', 'checks_ready', 'reasoning', 'reasoning_complete', 'completed'].includes(currentStatus),
+      isActive: ['created', 'validating', 'ready_for_analysis'].includes(currentStatus),
     },
     {
       id: 'step_browser',
-      label: 'Browser Navigation',
-      isDone: ['checking_desktop', 'checking_mobile', 'collecting_evidence', 'evidence_ready', 'checks_ready', 'reasoning', 'findings_ready', 'completed', 'reasoning_complete'].includes(currentStatus),
+      label: 'Opening website',
+      isDone: ['discovering', 'discovery_ready', 'checking_desktop', 'checking_mobile', 'collecting_evidence', 'checks_ready', 'reasoning', 'reasoning_complete', 'completed'].includes(currentStatus),
       isActive: currentStatus === 'opening',
     },
     {
-      id: 'step_evidence',
-      label: 'Desktop & Mobile Capture',
-      isDone: ['evidence_ready', 'checks_ready', 'reasoning', 'findings_ready', 'completed', 'reasoning_complete'].includes(currentStatus),
+      id: 'step_discovery',
+      label: 'Mapping your experience',
+      isDone: ['discovery_ready', 'checking_desktop', 'checking_mobile', 'collecting_evidence', 'checks_ready', 'reasoning', 'reasoning_complete', 'completed'].includes(currentStatus),
+      isActive: currentStatus === 'discovering',
+    },
+    {
+      id: 'step_adaptive_tests',
+      label: 'Testing important actions',
+      isDone: ['checks_ready', 'reasoning', 'reasoning_complete', 'completed'].includes(currentStatus),
       isActive: ['checking_desktop', 'checking_mobile', 'collecting_evidence'].includes(currentStatus),
     },
     {
-      id: 'step_checks',
-      label: 'Deterministic Rules',
-      isDone: ['reasoning', 'findings_ready', 'completed', 'reasoning_complete'].includes(currentStatus),
-      isActive: currentStatus === 'checks_ready',
-    },
-    {
-      id: 'step_ai',
-      label: 'AI Reasoning & Scoring',
-      isDone: ['completed', 'reasoning_complete'].includes(currentStatus),
-      isActive: ['reasoning', 'findings_ready'].includes(currentStatus),
+      id: 'step_reasoning',
+      label: 'Preparing your report',
+      isDone: currentStatus === 'completed',
+      isActive: ['checks_ready', 'reasoning', 'reasoning_complete'].includes(currentStatus),
     },
   ];
 
@@ -316,7 +285,7 @@ export function CheckingProgress({
             {currentStatus === 'failed' ? (
               <AlertTriangle className="w-6 h-6 text-rose-600 stroke-[2.2]" />
             ) : (
-              <Globe className="w-6 h-6 stroke-[2.2]" />
+              <Compass className="w-6 h-6 stroke-[2.2]" />
             )}
           </div>
         </div>
@@ -324,7 +293,7 @@ export function CheckingProgress({
         {/* Headings */}
         <div className="text-center mb-6">
           <p className="text-[11px] font-bold text-slate-400 tracking-wider uppercase mb-1">
-            {isRecheck ? 'RE-CHECKING YOUR PRODUCT' : 'CHECKING YOUR PRODUCT'}
+            {isRecheck ? 'RE-CHECKING YOUR PRODUCT' : 'UNDERSTANDING YOUR PRODUCT'}
           </p>
           <h1 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight leading-snug">
             {displayTarget}
@@ -335,10 +304,10 @@ export function CheckingProgress({
         {currentStatus === 'failed' ? (
           <div className="my-2 p-5 rounded-xl bg-rose-50/70 border border-rose-200/80 text-center space-y-3">
             <h2 className="text-sm font-bold text-rose-900">
-              Unable to Complete Check
+              Couldn&apos;t open this website
             </h2>
             <p className="text-xs text-rose-700 leading-relaxed max-w-md mx-auto">
-              {errorMsg || "We couldn't connect to this website or verify its pages. The server may be unreachable or rejecting connections."}
+              {errorMsg || "We couldn't finish loading the target website."}
             </p>
 
             <div className="pt-2 flex items-center justify-center gap-2">
@@ -353,7 +322,7 @@ export function CheckingProgress({
                 ) : (
                   <RotateCcw className="w-3.5 h-3.5" />
                 )}
-                <span>Retry Check</span>
+                <span>Try again</span>
               </button>
 
               {onBackToNewCheck && (
@@ -370,7 +339,7 @@ export function CheckingProgress({
           </div>
         ) : (
           <>
-            {/* Active Status Display (No fake progress %) */}
+            {/* Active Status Display */}
             <div className="p-4 rounded-xl bg-blue-50/50 border border-blue-100/80 mb-6 flex items-start gap-3">
               <div className="pt-0.5 shrink-0">
                 <Loader2 className="w-5 h-5 text-[#0066ff] animate-spin stroke-[2.4]" />
@@ -385,10 +354,10 @@ export function CheckingProgress({
               </div>
             </div>
 
-            {/* Real Pipeline Progression Steps */}
+            {/* Pipeline Progression Steps */}
             <div className="space-y-3 pt-1 border-t border-slate-100">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                Execution Pipeline
+                Website Discovery Pipeline
               </span>
 
               {steps.map((step) => (

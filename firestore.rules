@@ -73,7 +73,7 @@ service cloud.firestore {
         allow get: if isOwner(userId) && isValidId(userId) && isValidId(checkId);
         
         // List check results securely
-        allow list: if isOwner(userId) && isValidId(userId) && resource.data.userId == request.auth.uid;
+        allow list: if isOwner(userId) && isValidId(userId);
         
         // Allow check creation
         allow create: if isOwner(userId) && isValidId(userId) && isValidId(checkId)

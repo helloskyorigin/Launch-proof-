@@ -56,3 +56,32 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await context.params;
+    const authUser = await getAuthenticatedUser(req);
+    const userId = authUser?.uid || 'anonymous';
+
+    const { deleteCheck: dbDelete } = await import('@/lib/db/checks-repository');
+    const success = await dbDelete(id, userId);
+
+    return NextResponse.json({ success }, { status: 200 });
+  } catch (err) {
+    console.error('Error in DELETE /api/checks/[id]:', err);
+    return NextResponse.json(
+      {
+        success: false,
+        error: {
+          code: 'SERVER_ERROR',
+          message: 'An error occurred while deleting check.',
+        },
+      },
+      { status: 500 }
+    );
+  }
+}
+

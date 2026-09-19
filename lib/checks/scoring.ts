@@ -175,8 +175,8 @@ export function calculateReadinessScore(input: CalculateScoreInput): ReadinessSc
   ]);
 
   for (const check of checks) {
-    // Unknown checks must NOT be treated as failures
-    if (check.status === 'unknown' || check.status === 'pass') {
+    // Unknown and not_applicable checks must NOT be treated as failures
+    if (check.status === 'unknown' || check.status === 'pass' || check.status === 'not_applicable') {
       continue;
     }
 

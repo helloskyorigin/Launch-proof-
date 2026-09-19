@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { CheckingProgress } from '@/components/check/CheckingProgress';
 import { CheckResultView } from '@/components/check/CheckResultView';
+import { DiscoveryResultView } from '@/components/check/DiscoveryResultView';
 import { FindingDetailView } from '@/components/check/FindingDetailView';
 import { FixPlanView, FixPlanItem } from '@/components/check/FixPlanView';
 import { RecheckConfirmView } from '@/components/check/RecheckConfirmView';
@@ -83,7 +84,7 @@ export default function CheckDetailPage() {
           setCheck(record);
           syncFixPlan(record);
 
-          if (record.status === 'completed') {
+          if (record.status === 'completed' || record.status === 'discovery_ready') {
             setStage('result');
           } else {
             setStage('checking');
@@ -204,7 +205,7 @@ export default function CheckDetailPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-24 min-h-[60vh]">
               <Loader2 className="w-6 h-6 text-[#2563EB] animate-spin mb-3 stroke-[2.2]" />
-              <p className="text-xs font-medium text-[#667085]">Loading result...</p>
+              <p className="text-xs font-medium text-[#667085]">Preparing your result...</p>
             </div>
           ) : error ? (
             <div className="w-full max-w-sm mx-auto p-6 bg-[#FFFFFF] rounded-2xl border border-[#E5E7EB] text-center my-auto shadow-xs">
@@ -223,7 +224,7 @@ export default function CheckDetailPage() {
                   onClick={handleRetry}
                   className="min-h-[44px] px-4 py-2 rounded-xl bg-[#2563EB] text-white text-xs font-semibold hover:bg-blue-700 active:scale-95 transition-all cursor-pointer"
                 >
-                  Retry
+                  Try again
                 </button>
                 <button
                   type="button"

@@ -39,6 +39,9 @@ export interface StoredCheckDocument {
   description?: string;
   productType?: string;
   status: CheckStatus;
+  discovery?: any;
+  testPlan?: any;
+  adaptiveTests?: any;
   evidence?: any;
   deterministicChecks?: any;
   findings?: any;
@@ -48,9 +51,9 @@ export interface StoredCheckDocument {
   counts?: any | null;
   summary?: string | null;
   fixPlan?: any | null;
-  parentCheckId?: string;
-  responseTimeMs?: number;
-  httpStatus?: number;
+  parentCheckId?: string | null;
+  responseTimeMs?: number | null;
+  httpStatus?: number | null;
   error?: string | null;
   createdAt: string;
   completedAt?: string | null;
@@ -122,6 +125,19 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
   if (!isFirebaseConfigured()) return null;
+
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch {
+    // Auth not initialized
+  }
+
+  // If user is not authenticated on the client Firebase SDK, do not trigger an unauthenticated client Firestore getDoc
+  if (!auth?.currentUser || auth.currentUser.uid !== uid) {
+    return null;
+  }
+
   const db = getFirebaseDb();
   const userRef = doc(db, 'users', uid);
   const path = `users/${uid}`;
@@ -266,6 +282,48 @@ function sanitizeEvidenceForFirestore(evidence: any) {
   return clean;
 }
 
+function sanitizeDiscoveryForFirestore(discovery: any) {
+  if (!discovery) return null;
+  return {
+    page: {
+      url: discovery.page?.url || '',
+      finalUrl: discovery.page?.finalUrl || '',
+      title: discovery.page?.title || '',
+      metaDescription: discovery.page?.metaDescription || null,
+      mainHeadings: discovery.page?.mainHeadings?.slice(0, 20) || [],
+      language: discovery.page?.language || null,
+      httpStatus: discovery.page?.httpStatus ?? null,
+      responseTimeMs: discovery.page?.responseTimeMs ?? null,
+    },
+    navigation: {
+      status: discovery.navigation?.status || 'unknown',
+      internalLinkCount: discovery.navigation?.internalLinkCount ?? (discovery.navigation?.internalLinks?.length || 0),
+      externalLinkCount: discovery.navigation?.externalLinkCount ?? (discovery.navigation?.externalLinks?.length || 0),
+      linksSample: (discovery.navigation?.internalLinks || discovery.navigation?.links || []).slice(0, 15).map((l: any) => ({
+        text: l.text || '',
+        href: l.href || '',
+      })),
+    },
+    actions: {
+      buttonsCount: discovery.actions?.buttons?.length || 0,
+      primaryCtaCandidates: (discovery.actions?.primaryCtaCandidates || []).slice(0, 5),
+      formsCount: discovery.actions?.forms?.length || 0,
+      inputsCount: discovery.actions?.inputs?.length || 0,
+    },
+    capabilities: discovery.capabilities || null,
+    trustSignals: discovery.trustSignals || null,
+    mobile: {
+      load: discovery.mobile?.load || 'unknown',
+      visibleContent: discovery.mobile?.visibleContent || 'unknown',
+      horizontalOverflow: discovery.mobile?.horizontalOverflow || 'unknown',
+      importantNavigationPresent: discovery.mobile?.importantNavigationPresent || 'unknown',
+      viewportWidth: discovery.mobile?.viewportWidth || 390,
+      scrollWidth: discovery.mobile?.scrollWidth || 390,
+    },
+    summary: discovery.summary || null,
+  };
+}
+
 export function mapCheckRecordToStoredDoc(
   check: CheckRecord,
   userId: string,
@@ -282,6 +340,29 @@ export function mapCheckRecordToStoredDoc(
     description: check.description || '',
     productType: check.productType || 'SaaS / Web App',
     status: check.status,
+    discovery: sanitizeDiscoveryForFirestore(check.discovery),
+    testPlan: check.testPlan
+      ? {
+          applicableTestCount: check.testPlan.applicableTestCount,
+          notApplicableTestCount: check.testPlan.notApplicableTestCount,
+          summary: check.testPlan.summary,
+          tests: (check.testPlan.tests || []).map((t) => ({
+            id: t.id,
+            name: t.name,
+            category: t.category,
+            isApplicable: t.isApplicable,
+            reason: t.reason,
+          })),
+        }
+      : null,
+    adaptiveTests: (check.adaptiveTests || []).map((a) => ({
+      testId: a.testId,
+      name: a.name,
+      category: a.category,
+      isApplicable: a.isApplicable,
+      status: a.status,
+      evidence: a.evidence || [],
+    })),
     evidence: sanitizeEvidenceForFirestore(check.evidence),
     deterministicChecks: check.checks || null,
     findings: check.findings || null,
@@ -295,10 +376,10 @@ export function mapCheckRecordToStoredDoc(
     },
     summary: check.scoring?.summary ?? '',
     fixPlan: check.scoring?.fixPlan || null,
-    parentCheckId: parentCheckId || undefined,
-    responseTimeMs: check.responseTimeMs,
-    httpStatus: check.httpStatus,
-    error: check.error || check.aiError,
+    parentCheckId: parentCheckId || null,
+    responseTimeMs: check.responseTimeMs ?? null,
+    httpStatus: check.httpStatus ?? null,
+    error: check.error || check.aiError || null,
     createdAt: check.createdAt || now,
     completedAt: isCompleted ? (check.updatedAt || now) : null,
     updatedAt: now,
@@ -315,8 +396,9 @@ export function mapStoredDocToCheckRecord(doc: StoredCheckDocument): CheckRecord
     description: doc.description,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
-    responseTimeMs: doc.responseTimeMs,
-    httpStatus: doc.httpStatus,
+    responseTimeMs: doc.responseTimeMs ?? undefined,
+    httpStatus: doc.httpStatus ?? undefined,
+    discovery: doc.discovery || undefined,
     evidence: doc.evidence,
     checks: doc.deterministicChecks,
     findings: doc.findings,
@@ -351,6 +433,19 @@ export async function saveUserCheckToFirestore(
   parentCheckId?: string
 ): Promise<void> {
   if (!isFirebaseConfigured()) return;
+
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch {
+    // Auth not initialized
+  }
+
+  // If client is not signed in to Firebase Auth SDK as this user, skip direct client write (handled server-side)
+  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
+    return;
+  }
+
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', check.id);
   const path = `users/${userId}/checks/${check.id}`;
@@ -368,6 +463,28 @@ export async function getUserCheckFromFirestore(
   checkId: string
 ): Promise<CheckRecord | null> {
   if (!isFirebaseConfigured()) return null;
+
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch {
+    // Auth not initialized
+  }
+
+  // If client is not signed in to Firebase Auth SDK as this user, fallback to API
+  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch(`/api/checks/${checkId}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.check) return data.check;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
   const path = `users/${userId}/checks/${checkId}`;
@@ -386,6 +503,32 @@ export async function getUserCheckFromFirestore(
 
 export async function getUserChecksFromFirestore(userId: string): Promise<CheckRecord[]> {
   if (!isFirebaseConfigured()) return [];
+
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch {
+    // Auth not initialized
+  }
+
+  // If client is not signed in to Firebase Auth SDK as this user, fetch via secure server API
+  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
+    if (typeof window !== 'undefined') {
+      try {
+        const res = await fetch('/api/checks');
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.checks)) {
+            return data.checks;
+          }
+        }
+      } catch (err) {
+        console.warn('API fetch for checks fallback error:', err);
+      }
+    }
+    return [];
+  }
+
   const db = getFirebaseDb();
   const checksCol = collection(db, 'users', userId, 'checks');
   const path = `users/${userId}/checks`;
@@ -407,6 +550,23 @@ export async function deleteUserCheckFromFirestore(
   checkId: string
 ): Promise<void> {
   if (!isFirebaseConfigured()) return;
+
+  let auth;
+  try {
+    auth = getFirebaseAuth();
+  } catch {
+    // Auth not initialized
+  }
+
+  if (!auth?.currentUser || auth.currentUser.uid !== userId) {
+    if (typeof window !== 'undefined') {
+      try {
+        await fetch(`/api/checks/${checkId}`, { method: 'DELETE' });
+      } catch {}
+    }
+    return;
+  }
+
   const db = getFirebaseDb();
   const checkRef = doc(db, 'users', userId, 'checks', checkId);
   const path = `users/${userId}/checks/${checkId}`;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCheck } from '@/lib/db/checks-repository';
-import { executeCheckRun } from '@/lib/checks/check-runner';
+import { executeCheckRun, isCheckRunning } from '@/lib/checks/check-runner';
 import { getAuthenticatedUser } from '@/lib/firebase/admin';
 
 export async function POST(
@@ -16,6 +16,8 @@ export async function POST(
       );
     }
 
+    console.log('[ShipScan] execution started:', id);
+
     const authUser = await getAuthenticatedUser(req);
     const userId = authUser?.uid;
 
@@ -27,10 +29,15 @@ export async function POST(
       );
     }
 
-    // Trigger Playwright evidence collection run asynchronously
-    executeCheckRun(id).catch((err) => {
-      console.error(`[api/checks/${id}/run] Uncaught runner error:`, err);
-    });
+    // Concurrency protection: if check is already running or completed discovery, do not spawn another runner
+    if (!isCheckRunning(id)) {
+      // Trigger execution pipeline asynchronously
+      executeCheckRun(id).catch((err) => {
+        console.error(`[api/checks/${id}/run] Uncaught runner error:`, err);
+      });
+    } else {
+      console.log(`[ShipScan] Check ${id} is already running, skipping duplicate spawn.`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -38,7 +45,7 @@ export async function POST(
         id: check.id,
         url: check.url,
         finalUrl: check.finalUrl,
-        status: 'opening',
+        status: check.status === 'validating' || check.status === 'created' ? 'opening' : check.status,
       },
     });
   } catch (err: unknown) {

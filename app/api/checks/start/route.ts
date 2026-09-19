@@ -73,12 +73,14 @@ export async function POST(req: NextRequest) {
 
     // 4. Generate Check ID and store under authenticated user
     const checkId = createCheckId();
+    console.log('[ShipScan] check started:', checkId);
+
     const checkRecord = await saveCheck(
       {
         id: checkId,
         url: validation.normalizedUrl,
         finalUrl: reachability.finalUrl,
-        status: 'ready_for_analysis',
+        status: 'validating',
         productType: productType || 'SaaS / Web App',
         description: typeof description === 'string' ? description.trim() : '',
         createdAt: new Date().toISOString(),

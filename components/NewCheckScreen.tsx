@@ -5,6 +5,7 @@ import { NewCheckInput } from './check/NewCheckInput';
 import { ReviewCheckModal } from './check/ReviewCheckModal';
 import { CheckingProgress } from './check/CheckingProgress';
 import { CheckResultView } from './check/CheckResultView';
+import { DiscoveryResultView } from './check/DiscoveryResultView';
 import { FindingDetailView } from './check/FindingDetailView';
 import { FixPlanView, FixPlanItem } from './check/FixPlanView';
 import { RecheckConfirmView } from './check/RecheckConfirmView';

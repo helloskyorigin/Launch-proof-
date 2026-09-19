@@ -38,7 +38,20 @@ export function calculateScore(record: CheckRecord): FinalScoringResult {
     // If confidence < 0.50 AND it has weak/no valid evidence refs, we skip it.
     let validRefsCount = 0;
     if (finding.evidenceRefs && Array.isArray(finding.evidenceRefs)) {
-      validRefsCount = finding.evidenceRefs.filter(ref => deterministicCheckIds.has(ref) || ref.startsWith('evidence_')).length;
+      validRefsCount = finding.evidenceRefs.filter(ref => 
+        deterministicCheckIds.has(ref) || 
+        ref.startsWith('evidence_') ||
+        ref.startsWith('discovery-') ||
+        ref.startsWith('test-plan-') ||
+        ref.startsWith('desktop-') ||
+        ref.startsWith('mobile-') ||
+        ref.startsWith('technical-') ||
+        ref.startsWith('console-') ||
+        ref.startsWith('page-') ||
+        ref.startsWith('network-') ||
+        ref.startsWith('trust-') ||
+        ref.startsWith('deterministic-')
+      ).length;
     }
     
     // Safety check - we expect some evidence reference for a finding

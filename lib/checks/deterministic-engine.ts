@@ -2,6 +2,8 @@ import {
   CheckEvidence,
   DeterministicCheckResult,
 } from './check-store';
+import { WebsiteDiscoveryResult } from './discovery-types';
+import { TestPlan, AdaptiveTestResult } from './test-plan';
 
 export interface DeterministicEngineInput {
   url: string;
@@ -9,17 +11,52 @@ export interface DeterministicEngineInput {
   httpStatus?: number;
   responseTimeMs?: number;
   evidence?: CheckEvidence;
+  discovery?: WebsiteDiscoveryResult;
+  testPlan?: TestPlan;
+  adaptiveResults?: AdaptiveTestResult[];
 }
 
+/**
+ * Phase 3 Deterministic Engine (with Phase 2 Test Applicability support):
+ * Evaluates real evidence and test plan.
+ * Core rule:
+ * - not_applicable checks produce status: 'not_applicable' with 0 penalty.
+ * - unknown checks produce status: 'unknown' with 0 penalty.
+ * - pass checks require verified presence/functionality.
+ * - fail/warning only produced for genuine verified defects.
+ */
 export function runDeterministicChecks(
   input: DeterministicEngineInput
 ): DeterministicCheckResult[] {
-  const { url, finalUrl, httpStatus, responseTimeMs, evidence } = input;
+  const {
+    url,
+    finalUrl,
+    httpStatus,
+    responseTimeMs,
+    evidence,
+    discovery,
+    testPlan,
+    adaptiveResults,
+  } = input;
+
   const desktop = evidence?.desktop;
   const mobile = evidence?.mobile;
   const targetUrl = finalUrl || url;
 
   const results: DeterministicCheckResult[] = [];
+
+  // Helper to check test plan applicability
+  const isTestApplicable = (testId: string): boolean => {
+    if (!testPlan) return true;
+    const found = testPlan.tests.find((t) => t.id === testId);
+    return found ? found.isApplicable : true;
+  };
+
+  const getTestReason = (testId: string): string => {
+    if (!testPlan) return '';
+    const found = testPlan.tests.find((t) => t.id === testId);
+    return found?.reason || '';
+  };
 
   // ==========================================
   // 1. PRODUCT CLARITY
@@ -105,7 +142,7 @@ export function runDeterministicChecks(
       category: 'product_clarity',
       status: 'pass',
       evidence: [
-        'Visible page content detected (no explicit h1-h3 tags, content styled directly).',
+        'Visible page content detected (content styled directly).',
       ],
       value: [],
     });
@@ -159,12 +196,56 @@ export function runDeterministicChecks(
     }
   }
 
+  // Check 1.5: Pricing section (Adaptive: not applicable if pricing not present)
+  if (!isTestApplicable('pricing')) {
+    results.push({
+      id: 'product_clarity_pricing_page',
+      category: 'product_clarity',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('pricing') || 'No pricing section required.'}`],
+      value: null,
+    });
+  } else {
+    const pricingCap = discovery?.capabilities?.pricing;
+    const pricingTrust = discovery?.trustSignals?.pricing;
+    const hasPricing =
+      pricingCap?.status === 'detected' || pricingTrust?.status === 'detected';
+
+    if (hasPricing) {
+      results.push({
+        id: 'product_clarity_pricing_page',
+        category: 'product_clarity',
+        status: 'pass',
+        evidence: [
+          `Pricing information detected: "${pricingCap?.evidence?.text || pricingTrust?.evidence?.text || 'Pricing section present'}".`,
+        ],
+        value: true,
+      });
+    } else {
+      results.push({
+        id: 'product_clarity_pricing_page',
+        category: 'product_clarity',
+        status: 'unknown',
+        evidence: ['Pricing section not found in visible DOM.'],
+        value: false,
+      });
+    }
+  }
+
   // ==========================================
   // 2. USER JOURNEY
   // ==========================================
 
-  // Check 2.1: Navigation exists
-  if (!desktop) {
+  // Check 2.1: Navigation exists (Adaptive)
+  if (!isTestApplicable('navigation')) {
+    results.push({
+      id: 'user_journey_navigation',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('navigation') || 'Single-screen or landing page layout.'}`],
+      value: null,
+    });
+  } else if (!desktop) {
     results.push({
       id: 'user_journey_navigation',
       category: 'user_journey',
@@ -174,7 +255,6 @@ export function runDeterministicChecks(
     });
   } else {
     const linkCount = (desktop.links || []).length;
-
     if (linkCount > 0) {
       results.push({
         id: 'user_journey_navigation',
@@ -188,16 +268,22 @@ export function runDeterministicChecks(
         id: 'user_journey_navigation',
         category: 'user_journey',
         status: 'unknown',
-        evidence: [
-          '0 multi-page navigation links detected in visible DOM.',
-        ],
+        evidence: ['0 multi-page navigation links detected in visible DOM.'],
         value: 0,
       });
     }
   }
 
-  // Check 2.2: Links exist
-  if (!desktop) {
+  // Check 2.2: Links exist (Adaptive)
+  if (!isTestApplicable('links')) {
+    results.push({
+      id: 'user_journey_links',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('links') || 'No interactive links detected.'}`],
+      value: null,
+    });
+  } else if (!desktop) {
     results.push({
       id: 'user_journey_links',
       category: 'user_journey',
@@ -207,7 +293,6 @@ export function runDeterministicChecks(
     });
   } else {
     const linkCount = (desktop.links || []).length;
-
     if (linkCount > 0) {
       results.push({
         id: 'user_journey_links',
@@ -226,9 +311,7 @@ export function runDeterministicChecks(
         id: 'user_journey_links',
         category: 'user_journey',
         status: 'unknown',
-        evidence: [
-          '0 outbound or internal links detected in DOM.',
-        ],
+        evidence: ['0 outbound or internal links detected in DOM.'],
         value: 0,
       });
     }
@@ -245,7 +328,6 @@ export function runDeterministicChecks(
     });
   } else {
     const buttonCount = (desktop.buttons || []).length;
-
     if (buttonCount > 0) {
       results.push({
         id: 'user_journey_buttons',
@@ -264,16 +346,22 @@ export function runDeterministicChecks(
         id: 'user_journey_buttons',
         category: 'user_journey',
         status: 'unknown',
-        evidence: [
-          '0 button elements detected in DOM.',
-        ],
+        evidence: ['0 button elements detected in DOM.'],
         value: 0,
       });
     }
   }
 
-  // Check 2.4: Forms exist
-  if (!desktop) {
+  // Check 2.4: Forms exist (Adaptive)
+  if (!isTestApplicable('forms')) {
+    results.push({
+      id: 'user_journey_forms',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('forms') || 'No form elements detected on page.'}`],
+      value: null,
+    });
+  } else if (!desktop) {
     results.push({
       id: 'user_journey_forms',
       category: 'user_journey',
@@ -305,8 +393,16 @@ export function runDeterministicChecks(
     }
   }
 
-  // Check 2.5: Detect obvious missing/empty primary actions where evidence allows
-  if (!desktop) {
+  // Check 2.5: Primary CTA Actions (Adaptive)
+  if (!isTestApplicable('primary_cta')) {
+    results.push({
+      id: 'user_journey_primary_actions',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('primary_cta') || 'No primary call-to-action required.'}`],
+      value: null,
+    });
+  } else if (!desktop) {
     results.push({
       id: 'user_journey_primary_actions',
       category: 'user_journey',
@@ -326,9 +422,7 @@ export function runDeterministicChecks(
         id: 'user_journey_primary_actions',
         category: 'user_journey',
         status: 'unknown',
-        evidence: [
-          '0 interactive action buttons or links detected in DOM.',
-        ],
+        evidence: ['0 interactive action buttons or links detected in DOM.'],
         value: { totalInteractive: 0 },
       });
     } else if (hasEmptyButtons && (desktop.buttons || []).length === 1) {
@@ -351,6 +445,106 @@ export function runDeterministicChecks(
           `Primary actions present: ${desktop.buttons?.length || 0} button(s) and ${desktop.links?.length || 0} link(s) found.`,
         ],
         value: { totalInteractive, hasEmptyButtons },
+      });
+    }
+  }
+
+  // Check 2.6: User Signup Flow (Adaptive)
+  if (!isTestApplicable('signup')) {
+    results.push({
+      id: 'user_journey_signup',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('signup') || 'Signup flow not detected on this product.'}`],
+      value: null,
+    });
+  } else {
+    const signupCap = discovery?.capabilities?.signup;
+    if (signupCap?.status === 'detected') {
+      results.push({
+        id: 'user_journey_signup',
+        category: 'user_journey',
+        status: 'pass',
+        evidence: [
+          `Signup entry point verified: "${signupCap.evidence?.text || signupCap.evidence?.href || 'Signup detected'}"`,
+        ],
+        value: signupCap.evidence,
+      });
+    } else {
+      results.push({
+        id: 'user_journey_signup',
+        category: 'user_journey',
+        status: 'unknown',
+        evidence: ['Signup capability was not detected.'],
+        value: null,
+      });
+    }
+  }
+
+  // Check 2.7: User Login Flow (Adaptive)
+  if (!isTestApplicable('login')) {
+    results.push({
+      id: 'user_journey_login',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('login') || 'Login capability not detected.'}`],
+      value: null,
+    });
+  } else {
+    const loginCap = discovery?.capabilities?.login;
+    if (loginCap?.status === 'detected') {
+      results.push({
+        id: 'user_journey_login',
+        category: 'user_journey',
+        status: 'pass',
+        evidence: [
+          `Login entry point verified: "${loginCap.evidence?.text || loginCap.evidence?.href || 'Login detected'}"`,
+        ],
+        value: loginCap.evidence,
+      });
+    } else {
+      results.push({
+        id: 'user_journey_login',
+        category: 'user_journey',
+        status: 'unknown',
+        evidence: ['Login capability was not detected.'],
+        value: null,
+      });
+    }
+  }
+
+  // Check 2.8: Checkout / Cart Flow (Adaptive)
+  if (!isTestApplicable('checkout')) {
+    results.push({
+      id: 'user_journey_checkout',
+      category: 'user_journey',
+      status: 'not_applicable',
+      evidence: [`[Not Applicable] ${getTestReason('checkout') || 'Checkout flow not required for this website.'}`],
+      value: null,
+    });
+  } else {
+    const checkoutCap = discovery?.capabilities?.checkout;
+    const cartCap = discovery?.capabilities?.cart;
+    const hasCheckout =
+      checkoutCap?.status === 'detected' || cartCap?.status === 'detected';
+
+    if (hasCheckout) {
+      results.push({
+        id: 'user_journey_checkout',
+        category: 'user_journey',
+        status: 'pass',
+        evidence: [
+          `Cart/checkout capability verified: "${checkoutCap?.evidence?.text || cartCap?.evidence?.text || 'Checkout action present'}"`,
+        ],
+        value: true,
+      });
+    } else {
+      results.push({
+        id: 'user_journey_checkout',
+        category: 'user_journey',
+        status: 'unknown',
+        evidence: ['Cart or checkout flow not detected in visible DOM.'],
+        value: false,
       });
     }
   }
@@ -404,7 +598,6 @@ export function runDeterministicChecks(
       value: true,
     });
   } else if (!mobile.error) {
-    // If mobile DOM and rendering succeeded, missing screenshot is not a website failure
     results.push({
       id: 'mobile_screenshot_exists',
       category: 'mobile',
@@ -538,8 +731,6 @@ export function runDeterministicChecks(
   }
 
   // Check 4.2: Detect presence of common trust signals from visible evidence
-  // (privacy, terms, contact, about)
-  // Rule: Do NOT decide whether the product is trustworthy; only report presence/absence.
   if (!desktop) {
     results.push({
       id: 'trust_signals_presence',

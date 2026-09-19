@@ -1,8 +1,13 @@
+import { WebsiteDiscoveryResult } from './discovery-types';
+import { TestPlan, AdaptiveTestResult } from './test-plan';
+
 export type CheckStatus =
   | 'created'
   | 'validating'
   | 'ready_for_analysis'
   | 'opening'
+  | 'discovering'
+  | 'discovery_ready'
   | 'checking_desktop'
   | 'checking_mobile'
   | 'collecting_evidence'
@@ -14,6 +19,7 @@ export type CheckStatus =
   | 'findings_ready'
   | 'completed'
   | 'failed';
+
 
 export type ReadinessVerdict = 'Ready' | 'Needs Attention' | 'Not Ready';
 
@@ -41,7 +47,7 @@ export type CheckCategory =
   | 'trust'
   | 'technical';
 
-export type CheckResultStatus = 'pass' | 'fail' | 'warning' | 'unknown';
+export type CheckResultStatus = 'pass' | 'fail' | 'warning' | 'unknown' | 'not_applicable';
 
 export interface DeterministicCheckResult {
   id: string;
@@ -198,6 +204,9 @@ export interface CheckRecord {
   responseTimeMs?: number;
   httpStatus?: number;
   evidence?: CheckEvidence;
+  discovery?: WebsiteDiscoveryResult;
+  testPlan?: TestPlan;
+  adaptiveTests?: AdaptiveTestResult[];
   checks?: DeterministicCheckResult[];
   findings?: Finding[];
   reasoning?: ReasoningResult;
@@ -219,39 +228,47 @@ const globalForChecks = globalThis as unknown as {
   _checksStore?: Map<string, CheckRecord>;
 };
 
-const checksStore = globalForChecks._checksStore ?? new Map<string, CheckRecord>();
+export const checksStore = globalForChecks._checksStore ?? new Map<string, CheckRecord>();
 if (process.env.NODE_ENV !== 'production') {
   globalForChecks._checksStore = checksStore;
 }
 
 export function saveCheck(check: CheckRecord): CheckRecord {
-  const checkWithTimestamp = {
+  const checkWithTimestamp: CheckRecord = {
     ...check,
     updatedAt: new Date().toISOString(),
   };
   checksStore.set(check.id, checkWithTimestamp);
   
   import('@/lib/db/checks-repository').then(({ saveCheck: dbSave }) => {
-    dbSave(checkWithTimestamp).catch(e => console.error('Background save failed:', e));
+    dbSave(checkWithTimestamp).catch((e: unknown) => console.error('[check-store] DB save error:', e));
   }).catch(() => {});
   
   return checkWithTimestamp;
 }
 
-export function updateCheckStatus(
+export async function updateCheckStatus(
   id: string,
   status: CheckStatus,
   partial?: Partial<CheckRecord>
-): CheckRecord | undefined {
-  const existing = checksStore.get(id);
+): Promise<CheckRecord | undefined> {
+  let existing = checksStore.get(id);
   if (!existing) {
-     import('@/lib/db/checks-repository').then(({ updateCheckStatus: dbUpdate }) => {
-       dbUpdate(id, status, partial).catch(e => console.error('Background update failed:', e));
-     }).catch(() => {});
-     return undefined;
+    try {
+      const { getCheck: dbGet } = await import('@/lib/db/checks-repository');
+      existing = await dbGet(id);
+    } catch {
+      // Ignore
+    }
   }
+
   const updated: CheckRecord = {
-    ...existing,
+    ...(existing || {
+      id,
+      url: partial?.url || '',
+      finalUrl: partial?.finalUrl || partial?.url || '',
+      createdAt: new Date().toISOString(),
+    }),
     ...partial,
     status,
     updatedAt: new Date().toISOString(),
@@ -259,28 +276,38 @@ export function updateCheckStatus(
   checksStore.set(id, updated);
   
   import('@/lib/db/checks-repository').then(({ updateCheckStatus: dbUpdate }) => {
-    dbUpdate(id, status, partial).catch(e => console.error('Background update failed:', e));
+    dbUpdate(id, status, partial).catch((e: unknown) => console.error('[check-store] DB status update error:', e));
   }).catch(() => {});
   
   return updated;
 }
 
 export function getCheck(id: string): CheckRecord | undefined {
-  import('@/lib/db/checks-repository').then(({ getCheck: dbGet }) => {
-    dbGet(id).then(dbCheck => {
-      if (dbCheck) checksStore.set(id, dbCheck);
-    }).catch(e => console.error('Background fetch failed:', e));
-  }).catch(() => {});
-  
   return checksStore.get(id);
 }
 
+export async function getCheckAsync(id: string): Promise<CheckRecord | undefined> {
+  const inMemory = checksStore.get(id);
+  if (inMemory) return inMemory;
+
+  try {
+    const { getCheck: dbGet } = await import('@/lib/db/checks-repository');
+    const dbRecord = await dbGet(id);
+    if (dbRecord) {
+      checksStore.set(id, dbRecord);
+      return dbRecord;
+    }
+  } catch {
+    // Ignore
+  }
+  return undefined;
+}
+
 export function getAllChecks(): CheckRecord[] {
-  // Try to sync with DB if possible
   import('@/lib/db/checks-repository').then(({ getAllChecks: dbGetAll }) => {
-    dbGetAll().then(dbChecks => {
-      dbChecks.forEach(c => checksStore.set(c.id, c));
-    }).catch(e => console.error('Background fetch all failed:', e));
+    dbGetAll().then((dbChecks: CheckRecord[]) => {
+      dbChecks.forEach((c: CheckRecord) => checksStore.set(c.id, c));
+    }).catch((e: unknown) => console.error('[check-store] DB getAll error:', e));
   }).catch(() => {});
   
   return Array.from(checksStore.values()).sort(
@@ -290,7 +317,7 @@ export function getAllChecks(): CheckRecord[] {
 
 export function deleteCheck(id: string): boolean {
   import('@/lib/db/checks-repository').then(({ deleteCheck: dbDelete }) => {
-    dbDelete(id).catch(e => console.error('Background delete failed:', e));
+    dbDelete(id).catch((e: unknown) => console.error('[check-store] DB delete error:', e));
   }).catch(() => {});
   
   return checksStore.delete(id);
